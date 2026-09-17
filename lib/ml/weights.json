@@ -1,0 +1,55 @@
+{
+  "_meta": {
+    "description": "Logistic regression weights for phishing URL detection",
+    "dataset": "PhiUSIIL Phishing URL Dataset, UCI ML Repository",
+    "dataset_url": "https://archive.ics.uci.edu/dataset/967/phiusiil+phishing+url+dataset",
+    "feature_names": [
+      "url_length",
+      "subdomain_count",
+      "has_ip_host",
+      "has_at_symbol",
+      "has_https",
+      "suspicious_kw_count",
+      "domain_entropy"
+    ],
+    "feature_count": 7,
+    "metrics": {
+      "accuracy": 0.9106,
+      "precision": 0.9008,
+      "recall": 0.9481,
+      "f1": 0.9239,
+      "train_size": 188636,
+      "test_size": 47159
+    },
+    "trained_at": "2026-09-17T11:28:49.910674Z",
+    "note": "ML contributes up to 25 points in scoring.ts \u2014 capped by design (Architecture.md \u00a75)"
+  },
+  "intercept": -3.1866694116263536,
+  "coefficients": [
+    -10.139004773183343,
+    1.0794726023079608,
+    -0.04441586228587708,
+    -0.5810584492218361,
+    6.47477279942525,
+    -0.41071822463092683,
+    -0.19895743781736577
+  ],
+  "scaler_mean": [
+    0.3537763205326377,
+    1.165684174812867,
+    0.002666511164358871,
+    0.006446277486799975,
+    0.7805190949765687,
+    0.04676731906953074,
+    3.471796411062442
+  ],
+  "scaler_std": [
+    0.40876386264842435,
+    0.601750147573693,
+    0.05156937931142771,
+    0.08002951326469898,
+    0.4138949593241648,
+    0.2497631218492917,
+    0.40112182068078445
+  ]
+}
