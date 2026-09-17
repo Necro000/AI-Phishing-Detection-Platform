@@ -10,7 +10,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdmin } from '@/lib/auth/requireAdmin'
-import { createServiceClient } from '@/lib/supabaseClient'
+import { createServiceClient } from '@/lib/supabaseServiceClient'
 
 export async function GET(request: NextRequest) {
   // ── Role check (server-side, every request) ───────────────────────────────

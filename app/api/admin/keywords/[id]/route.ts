@@ -12,7 +12,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdmin } from '@/lib/auth/requireAdmin'
-import { createServiceClient } from '@/lib/supabaseClient'
+import { createServiceClient } from '@/lib/supabaseServiceClient'
 
 interface RouteContext {
   params: Promise<{ id: string }>

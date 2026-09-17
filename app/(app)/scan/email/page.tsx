@@ -102,7 +102,7 @@ export default function ScanEmailPage() {
   const riskConfig = result ? RISK_CONFIG[result.risk_level as RiskLevel] : null
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-950 to-slate-900 p-6">
+    <main className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-950 to-slate-900 p-4 sm:p-6">
       <div className="max-w-3xl mx-auto">
         {/* Header */}
         <div className="mb-8">

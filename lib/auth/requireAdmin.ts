@@ -15,7 +15,7 @@
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { NextRequest, NextResponse } from 'next/server'
-import { createServiceClient } from '@/lib/supabaseClient'
+import { createServiceClient } from '@/lib/supabaseServiceClient'
 
 export async function requireAdmin(
   request: NextRequest

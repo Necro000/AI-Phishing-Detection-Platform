@@ -26,7 +26,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
-import { createServiceClient } from '@/lib/supabaseClient'
+import { createServiceClient } from '@/lib/supabaseServiceClient'
 import { runUrlRules, isPrivateOrLoopback, normalizeUrl } from '@/lib/ruleEngine/urlRules'
 import { checkSafeBrowsing } from '@/lib/safeBrowsing'
 import { checkVirusTotal } from '@/lib/virusTotal'

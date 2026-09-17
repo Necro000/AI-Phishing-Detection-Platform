@@ -2,7 +2,7 @@ import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import { createServiceClient } from '@/lib/supabaseClient'
+import { createServiceClient } from '@/lib/supabaseServiceClient'
 
 interface ScanRow {
   id: string

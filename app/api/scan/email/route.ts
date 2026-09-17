@@ -20,7 +20,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
 import { createServerClient } from '@supabase/ssr'
-import { createServiceClient } from '@/lib/supabaseClient'
+import { createServiceClient } from '@/lib/supabaseServiceClient'
 import { runEmailRules } from '@/lib/ruleEngine/emailRules'
 import { scoreEmail } from '@/lib/ruleEngine/scoring'
 import { DEFAULT_KEYWORDS } from '@/lib/ruleEngine/defaultKeywords'

@@ -1,19 +1,20 @@
 /**
- * supabaseClient.ts
- * Two clients:
- *  - createBrowserClient  → anon key, safe for use in Client Components / browser
- *  - createServiceClient  → service-role key, SERVER ONLY — never import in client code
+ * supabaseClient.ts — BROWSER-SAFE MODULE
  *
- * For Server Components / Route Handlers that need the *user's* session (RLS-scoped),
- * use createServerClient from @supabase/ssr with cookie helpers instead.
+ * Only reads NEXT_PUBLIC_ env vars — safe to import from Client Components.
+ * DO NOT add server-only env vars (SUPABASE_SERVICE_ROLE_KEY etc.) to this file.
+ *
+ * For server-side admin operations (bypassing RLS), import from:
+ *   @/lib/supabaseServiceClient   ← server-only, never import in 'use client' files
+ *
+ * For Server Components / Route Handlers that need the user's RLS-scoped session,
+ * use createServerClient from @supabase/ssr with cookie helpers.
  */
 
 import { createBrowserClient as _createBrowserClient } from '@supabase/ssr'
-import { createClient } from '@supabase/supabase-js'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
 
 /**
  * Browser / Client Component client — uses anon key, subject to RLS.
@@ -21,19 +22,4 @@ const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
  */
 export function createBrowserClient() {
   return _createBrowserClient(supabaseUrl, supabaseAnonKey)
-}
-
-/**
- * Service-role client — bypasses RLS.
- * ONLY import this in server-side code (Route Handlers, Server Components, requireAdmin).
- * Never expose SUPABASE_SERVICE_ROLE_KEY to the client bundle.
- */
-export function createServiceClient() {
-  return createClient(supabaseUrl, supabaseServiceRoleKey, {
-    auth: {
-      // Service-role client should not persist sessions
-      autoRefreshToken: false,
-      persistSession: false,
-    },
-  })
 }

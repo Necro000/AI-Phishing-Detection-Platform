@@ -70,7 +70,11 @@ export const config = {
      * Match all request paths EXCEPT:
      * - _next/static, _next/image, favicon.ico, public assets
      * - api routes (those handle their own auth via requireAdmin / session check)
+     *   Excluding api/ is critical: the middleware calls createServerClient which
+     *   requires a valid NEXT_PUBLIC_SUPABASE_URL — if that var is unset the
+     *   middleware crashes with a 500 before API route handlers ever run.
+     *   API routes do their own session check (401) and requireAdmin (403) internally.
      */
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    '/((?!api/|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 }

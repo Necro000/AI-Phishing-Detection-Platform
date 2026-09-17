@@ -12,7 +12,7 @@
  * VT has no report for URL → { flagged: false, degraded: false, unseen: true }
  */
 
-import { createServiceClient } from './supabaseClient'
+import { createServiceClient } from './supabaseServiceClient'
 
 export interface VirusTotalResult {
   /** true = >= 3 vendors flagged as malicious */

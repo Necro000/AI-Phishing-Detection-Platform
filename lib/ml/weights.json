@@ -21,7 +21,7 @@
       "train_size": 188636,
       "test_size": 47159
     },
-    "trained_at": "2026-09-17T11:28:49.910674Z",
+    "trained_at": "2026-09-17T18:55:13.561785+00:00",
     "note": "ML contributes up to 25 points in scoring.ts \u2014 capped by design (Architecture.md \u00a75)"
   },
   "intercept": -3.1866694116263536,
