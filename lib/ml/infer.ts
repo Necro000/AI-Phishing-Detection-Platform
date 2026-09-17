@@ -28,7 +28,7 @@ interface Weights {
   }
 }
 
-interface InferResult {
+export interface InferResult {
   /** Phishing probability 0–1, or null if inference failed */
   ml: number | null
   /** True if weights.json is missing/malformed or feature extraction failed */
