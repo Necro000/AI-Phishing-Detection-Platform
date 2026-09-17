@@ -167,11 +167,15 @@ export function scoreUrl(input: UrlScoringInput): ScanResult {
 
 export interface EmailScoringInput {
   ruleHits: RuleHit[]
-  ruleScore: number
+  /** Optional pre-computed score; if omitted, scoring.ts sums ruleHits.reduce((s, h) => s + h.score, 0) */
+  ruleScore?: number
 }
 
 export function scoreEmail(input: EmailScoringInput): ScanResult {
-  const { ruleHits, ruleScore } = input
+  const { ruleHits } = input
+  const ruleScore = input.ruleScore !== undefined
+    ? input.ruleScore
+    : ruleHits.reduce((sum, h) => sum + h.score, 0)
 
   const reasons = ruleHits.map(h => h.reason)
   const signals: Signals = {
@@ -181,9 +185,11 @@ export function scoreEmail(input: EmailScoringInput): ScanResult {
     ml: null,             // features.ts is URL-shaped, no ML on email content
   }
 
+  const finalScore = clamp(ruleScore, 0, 100)
+
   return {
-    risk_level: scoreToLevel(clamp(ruleScore, 0, 100)),
-    risk_score: clamp(ruleScore, 0, 100),
+    risk_level: scoreToLevel(finalScore),
+    risk_score: finalScore,
     reasons,
     signals,
   }

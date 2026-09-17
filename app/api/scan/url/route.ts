@@ -32,6 +32,7 @@ import { checkSafeBrowsing } from '@/lib/safeBrowsing'
 import { checkVirusTotal } from '@/lib/virusTotal'
 import { infer as mlInfer } from '@/lib/ml/infer'
 import { scoreUrl, isBothApisDegraded } from '@/lib/ruleEngine/scoring'
+import { DEFAULT_KEYWORDS } from '@/lib/ruleEngine/defaultKeywords'
 import type { DbKeyword } from '@/lib/ruleEngine/urlRules'
 
 const MAX_INPUT_LENGTH = 2000   // Edge-Cases.md: URL > ~2000 chars → truncate for storage
@@ -108,8 +109,11 @@ export async function POST(request: NextRequest) {
       .order('weight', { ascending: false })
     keywords = (kw ?? []) as DbKeyword[]
   } catch {
-    // Non-fatal — rule engine still works with structural rules and empty keyword list
-    console.warn('[scan/url] Failed to load keywords from DB — using structural rules only')
+    console.warn('[scan/url] Failed to load keywords from DB — using defaults')
+  }
+
+  if (!keywords || keywords.length === 0) {
+    keywords = DEFAULT_KEYWORDS
   }
 
   // ── 5. Run rule engine (pure, synchronous, no I/O) ──────────────────────

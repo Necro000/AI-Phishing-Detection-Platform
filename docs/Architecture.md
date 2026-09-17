@@ -132,10 +132,19 @@ Standard CRUD on the `keywords` table. PATCH (`/api/admin/keywords/:id`) edits `
 `category` in place — deliberately not DELETE+re-POST, which would lose `created_at`/
 `created_by` on every weight tweak during the tuning you'll be doing close to the deadline.
 
-`category` has no DB enum constraint (forward-compatible), but `lib/ruleEngine/categories.ts`
-exports the known set (`urgency`, `credential_request`, `scam_generic`, ...) as a shared TS
-constant imported by both the admin UI dropdown and the rule matcher — keeps it flexible
-without letting a typo silently fail to match.
+`weight` is capped at **1–40 per keyword**, enforced both server-side and via a DB `CHECK`
+constraint — not 1–100. Reasoning: risk bands are SAFE 0–29 / SUSPICIOUS 30–69 / HIGH_RISK
+70–100; a single keyword must never be able to unilaterally force HIGH_RISK on its own,
+the same way no single rule can — reaching HIGH_RISK from the rule engine alone still
+requires multiple signals to agree. A weight of 40 can push a scan into SUSPICIOUS by
+itself but never into HIGH_RISK alone.
+
+`category` has no DB enum constraint and the API does not reject unknown category strings
+— it stays free-text/forward-compatible. `lib/ruleEngine/categories.ts` exports the known
+set (`urgency`, `credential_request`, `scam_generic`, ...) purely to populate the admin UI
+dropdown and to be imported by the rule matcher for its own known checks; it is a suggested
+list, not a validation whitelist. Do not add server-side rejection of categories outside
+this list.
 
 ## 5. Scoring model (single source of truth: `scoring.ts`)
 - Rule engine hits sum to a base score (each rule has a fixed weight, urlRules/emailRules
