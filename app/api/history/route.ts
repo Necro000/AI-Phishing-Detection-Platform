@@ -72,3 +72,77 @@ export async function GET(request: NextRequest) {
     { status: 200 }
   )
 }
+
+export async function DELETE(request: NextRequest) {
+  const cookieStore = await cookies()
+  const sessionClient = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return cookieStore.getAll()
+        },
+        setAll(cookiesToSet) {
+          try {
+            cookiesToSet.forEach(({ name, value, options }) =>
+              cookieStore.set(name, value, options)
+            )
+          } catch {
+            /* ignore */
+          }
+        },
+      },
+    }
+  )
+
+  const authHeader = request.headers.get('authorization')
+  const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7).trim() : undefined
+
+  const {
+    data: { user },
+    error: sessionError,
+  } = await sessionClient.auth.getUser(bearerToken)
+
+  if (sessionError || !user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
+  const { searchParams } = new URL(request.url)
+  const scanId = searchParams.get('id')
+  const clearAll = searchParams.get('all') === 'true'
+
+  const serviceClient = createServiceClient()
+
+  if (clearAll) {
+    const { error } = await serviceClient
+      .from('scans')
+      .delete()
+      .eq('user_id', user.id)
+
+    if (error) {
+      console.error('[history/delete-all] DB error:', error.message)
+      return NextResponse.json({ error: 'Failed to clear scan history' }, { status: 500 })
+    }
+
+    return NextResponse.json({ success: true, message: 'All personal scan history cleared.' })
+  }
+
+  if (!scanId) {
+    return NextResponse.json({ error: 'Scan ID or all=true parameter is required' }, { status: 400 })
+  }
+
+  // Delete specific scan belonging to this user
+  const { error } = await serviceClient
+    .from('scans')
+    .delete()
+    .eq('id', scanId)
+    .eq('user_id', user.id)
+
+  if (error) {
+    console.error('[history/delete] DB error:', error.message)
+    return NextResponse.json({ error: 'Failed to delete scan record' }, { status: 500 })
+  }
+
+  return NextResponse.json({ success: true, message: 'Scan record deleted.' })
+}

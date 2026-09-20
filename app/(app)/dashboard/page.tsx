@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { createServiceClient } from '@/lib/supabaseServiceClient'
 import { Navbar } from '@/components/Navbar'
+import { DashboardHistoryTable } from '@/components/DashboardHistoryTable'
 
 interface ScanRow {
   id: string
@@ -221,85 +222,8 @@ export default async function DashboardPage() {
           </Link>
         </div>
 
-        {/* Scan History Table */}
-        <div className="bg-slate-900/60 border border-white/10 rounded-2xl p-6 backdrop-blur-xl shadow-xl">
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h2 className="text-base font-bold text-white tracking-tight">Recent Threat Inspections</h2>
-              <p className="text-xs text-slate-400 mt-0.5">Audit log of your last 20 inspection queries</p>
-            </div>
-            <span className="text-xs font-mono text-slate-500">{scans.length} records</span>
-          </div>
-
-          {scans.length === 0 ? (
-            <div className="text-center py-12 border border-dashed border-white/10 rounded-xl">
-              <span className="text-3xl">🛡️</span>
-              <p className="text-sm font-semibold text-slate-300 mt-2">No scans executed yet</p>
-              <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
-                Start inspecting URLs or email files above to populate your threat intelligence history.
-              </p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead>
-                  <tr className="border-b border-white/10 text-slate-400 uppercase font-mono text-[10px]">
-                    <th className="pb-3 pr-4">Type</th>
-                    <th className="pb-3 pr-4">Target / Content</th>
-                    <th className="pb-3 pr-4">Verdict</th>
-                    <th className="pb-3 pr-4">Score</th>
-                    <th className="pb-3 pr-4">Signals</th>
-                    <th className="pb-3">Timestamp</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-white/5 font-mono">
-                  {scans.map((scan) => {
-                    const badge = RISK_BADGE[scan.risk_level] ?? RISK_BADGE.SAFE
-                    return (
-                      <tr key={scan.id} className="hover:bg-white/[0.02] transition-colors">
-                        <td className="py-3.5 pr-4">
-                          <span className="px-2 py-0.5 rounded uppercase text-[10px] font-bold bg-white/5 border border-white/10 text-slate-300">
-                            {scan.scan_type}
-                          </span>
-                        </td>
-                        <td className="py-3.5 pr-4 max-w-xs truncate text-slate-200 font-sans">
-                          {scan.input}
-                        </td>
-                        <td className="py-3.5 pr-4">
-                          <span
-                            className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold border ${badge.bg} ${badge.border} ${badge.text}`}
-                          >
-                            <span className={`w-1.5 h-1.5 rounded-full ${badge.dot}`} />
-                            {badge.label}
-                          </span>
-                        </td>
-                        <td className="py-3.5 pr-4 text-white font-bold">{scan.risk_score}</td>
-                        <td className="py-3.5 pr-4">
-                          <div className="flex items-center gap-1 text-[10px]">
-                            <span className="px-1.5 py-0.5 rounded bg-white/5 border border-white/10 text-slate-400" title="Rule Engine">
-                              R:{scan.signals?.rules ?? 0}
-                            </span>
-                            {scan.signals?.ml !== null && scan.signals?.ml !== undefined && (
-                              <span className="px-1.5 py-0.5 rounded bg-cyan-500/10 border border-cyan-500/20 text-cyan-300" title="ML Model">
-                                ML:{scan.signals.ml}
-                              </span>
-                            )}
-                          </div>
-                        </td>
-                        <td className="py-3.5 text-slate-400 text-[11px] font-sans">
-                          {new Date(scan.created_at).toLocaleString([], {
-                            dateStyle: 'short',
-                            timeStyle: 'short',
-                          })}
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
+        {/* Scan History Table with Interactive Deletion */}
+        <DashboardHistoryTable initialScans={scans} />
       </main>
     </div>
   )
