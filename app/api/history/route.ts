@@ -15,6 +15,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
 import { createServerClient } from '@supabase/ssr'
+import { createServiceClient } from '@/lib/supabaseServiceClient'
 
 export async function GET(request: NextRequest) {
   const cookieStore = await cookies()
@@ -33,7 +34,10 @@ export async function GET(request: NextRequest) {
     }
   )
 
-  const { data: { user }, error: sessionError } = await sessionClient.auth.getUser()
+  const authHeader = request.headers.get('authorization')
+  const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7).trim() : undefined
+
+  const { data: { user }, error: sessionError } = await sessionClient.auth.getUser(bearerToken)
   if (sessionError || !user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -46,8 +50,9 @@ export async function GET(request: NextRequest) {
   const limit = isNaN(limitParam) ? 20 : Math.min(Math.max(limitParam, 1), 100)
   const offset = isNaN(offsetParam) ? 0 : Math.max(offsetParam, 0)
 
-  // Query scans with count
-  const { data: scans, error, count } = await sessionClient
+  // Query scans with count using service client for verified user.id
+  const serviceClient = createServiceClient()
+  const { data: scans, error, count } = await serviceClient
     .from('scans')
     .select('*', { count: 'exact' })
     .eq('user_id', user.id)

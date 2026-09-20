@@ -47,7 +47,10 @@ export async function POST(request: NextRequest) {
     }
   )
 
-  const { data: { user }, error: sessionError } = await sessionClient.auth.getUser()
+  const authHeader = request.headers.get('authorization')
+  const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7).trim() : undefined
+
+  const { data: { user }, error: sessionError } = await sessionClient.auth.getUser(bearerToken)
   if (sessionError || !user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
