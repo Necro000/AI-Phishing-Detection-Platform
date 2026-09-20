@@ -80,7 +80,7 @@ async function runQATests() {
       email: testEmail,
       password: testPassword,
     })
-    assert(!!authData.user, `User Account Created (${testEmail})`)
+    assert(!signInError && !!authData?.user, `User Account Created & Signed In (${testEmail})`)
 
     const token = authData.session.access_token
     const refreshToken = authData.session.refresh_token

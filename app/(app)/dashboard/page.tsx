@@ -23,33 +23,6 @@ interface ScanRow {
   created_at: string
 }
 
-const RISK_BADGE: Record<
-  string,
-  { label: string; text: string; bg: string; border: string; dot: string }
-> = {
-  SAFE: {
-    label: 'Safe',
-    text: 'text-emerald-400',
-    bg: 'bg-emerald-500/10',
-    border: 'border-emerald-500/30',
-    dot: 'bg-emerald-400',
-  },
-  SUSPICIOUS: {
-    label: 'Suspicious',
-    text: 'text-amber-400',
-    bg: 'bg-amber-500/10',
-    border: 'border-amber-500/30',
-    dot: 'bg-amber-400',
-  },
-  HIGH_RISK: {
-    label: 'High Risk',
-    text: 'text-red-400',
-    bg: 'bg-red-500/10',
-    border: 'border-red-500/30',
-    dot: 'bg-red-400',
-  },
-}
-
 export default async function DashboardPage() {
   const cookieStore = await cookies()
 
