@@ -75,6 +75,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'URL is required' }, { status: 400 })
   }
 
+  if (rawUrl.length > 2048) {
+    return NextResponse.json({ error: 'URL exceeds maximum length of 2048 characters' }, { status: 400 })
+  }
+
   // Normalize before validation
   const normalizedUrl = normalizeUrl(rawUrl)
 
@@ -152,22 +156,34 @@ export async function POST(request: NextRequest) {
       ? rawUrl.slice(0, MAX_INPUT_LENGTH) + STORAGE_TRUNCATE_NOTE
       : rawUrl
 
+  let scanId: string | undefined
   try {
     const serviceClient = createServiceClient()
-    await serviceClient.from('scans').insert({
-      user_id: user.id,
-      scan_type: 'url',
-      input: storedInput,
-      risk_level: scanResult.risk_level,
-      risk_score: scanResult.risk_score,
-      reasons: scanResult.reasons,
-      signals: scanResult.signals,
-    })
+    const { data: insertedScan } = await serviceClient
+      .from('scans')
+      .insert({
+        user_id: user.id,
+        scan_type: 'url',
+        input: storedInput,
+        risk_level: scanResult.risk_level,
+        risk_score: scanResult.risk_score,
+        reasons: scanResult.reasons,
+        signals: scanResult.signals,
+      })
+      .select('id')
+      .single()
+
+    if (insertedScan?.id) {
+      scanId = insertedScan.id
+    }
   } catch (err) {
     // Persist failure is non-fatal for the response — client still gets the result
     console.error('[scan/url] Failed to persist scan:', err)
   }
 
   // ── 10. Return result ──────────────────────────────────────────────────────
-  return NextResponse.json(scanResult)
+  return NextResponse.json({
+    ...scanResult,
+    ...(scanId ? { id: scanId } : {}),
+  })
 }

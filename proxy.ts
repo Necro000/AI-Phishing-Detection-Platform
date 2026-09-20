@@ -18,9 +18,35 @@ import { NextRequest, NextResponse } from 'next/server'
 export async function proxy(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request })
 
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+  const hasValidSupabase =
+    Boolean(supabaseUrl &&
+    (supabaseUrl.startsWith('http://') || supabaseUrl.startsWith('https://')) &&
+    supabaseAnonKey &&
+    supabaseAnonKey !== 'your-supabase-anon-key')
+
+  const { pathname } = request.nextUrl
+
+  // Protected routes: /dashboard, /scan/*, /admin/*
+  const isProtected =
+    pathname.startsWith('/dashboard') ||
+    pathname.startsWith('/scan') ||
+    pathname.startsWith('/admin')
+
+  if (!hasValidSupabase) {
+    if (isProtected) {
+      const loginUrl = new URL('/login', request.url)
+      loginUrl.searchParams.set('redirectTo', pathname)
+      return NextResponse.redirect(loginUrl)
+    }
+    return supabaseResponse
+  }
+
   const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    supabaseUrl!,
+    supabaseAnonKey!,
     {
       cookies: {
         getAll() {
@@ -41,14 +67,6 @@ export async function proxy(request: NextRequest) {
   const {
     data: { user },
   } = await supabase.auth.getUser()
-
-  const { pathname } = request.nextUrl
-
-  // Protected routes: /dashboard, /scan/*, /admin/*
-  const isProtected =
-    pathname.startsWith('/dashboard') ||
-    pathname.startsWith('/scan') ||
-    pathname.startsWith('/admin')
 
   if (isProtected && !user) {
     const loginUrl = new URL('/login', request.url)

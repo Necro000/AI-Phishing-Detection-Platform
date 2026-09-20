@@ -1,25 +1,15 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import type { ScanResult } from '@/lib/ruleEngine/scoring'
+import { Navbar } from '@/components/Navbar'
+import { RiskGauge } from '@/components/RiskGauge'
+import { useToast } from '@/components/ToastProvider'
+import { createBrowserClient } from '@/lib/supabaseClient'
 
 type RiskLevel = 'SAFE' | 'SUSPICIOUS' | 'HIGH_RISK'
 
-const RISK_CONFIG: Record<RiskLevel, { label: string; color: string; bg: string; border: string; icon: string }> = {
-  SAFE:      { label: 'Safe',      color: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/30', icon: '✅' },
-  SUSPICIOUS:{ label: 'Suspicious',color: 'text-amber-400',   bg: 'bg-amber-500/10',   border: 'border-amber-500/30',   icon: '⚠️' },
-  HIGH_RISK: { label: 'High Risk', color: 'text-red-400',     bg: 'bg-red-500/10',     border: 'border-red-500/30',     icon: '🚨' },
-}
-
-interface Signals {
-  rules: number
-  safeBrowsing: boolean | null
-  virusTotal: boolean | null
-  ml: number | null
-}
-
-// Extended result shape including degraded flags surfaced from the API
 interface FullScanResult extends ScanResult {
   degraded?: {
     safeBrowsing?: boolean
@@ -27,56 +17,69 @@ interface FullScanResult extends ScanResult {
   }
 }
 
-function SignalBadge({ label, value, degraded }: { label: string; value: boolean | null | number | string; degraded?: boolean }) {
-  let display = '—'
-  let color = 'text-slate-400'
-  let pill = ''
-
-  if (degraded) {
-    display = 'Degraded'
-    color = 'text-orange-400'
-    pill = 'border-orange-500/30'
-  } else if (value === null) {
-    display = 'N/A'
-    color = 'text-slate-500'
-    pill = ''
-  } else if (typeof value === 'boolean') {
-    display = value ? 'Flagged' : 'Clean'
-    color = value ? 'text-red-400' : 'text-emerald-400'
-  } else if (typeof value === 'number') {
-    display = String(value)
-    color = 'text-blue-400'
-  } else {
-    display = value
-    color = 'text-blue-400'
-  }
-
-  return (
-    <div className={`bg-white/5 border rounded-xl p-3 text-center ${pill || 'border-white/10'}`}>
-      <div className={`text-sm font-semibold ${color}`}>{display}</div>
-      <div className="text-xs text-slate-500 mt-1">{label}</div>
-    </div>
-  )
-}
+const SAMPLE_URLS = [
+  {
+    title: 'PayPal IP Spoof',
+    category: 'Known Phishing',
+    url: 'http://192.168.1.1/paypal/login.php',
+  },
+  {
+    title: 'Apple ID Typosquat',
+    category: 'Homograph/Phish',
+    url: 'https://app1e-security-check.com/signin',
+  },
+  {
+    title: 'Legitimate GitHub Domain',
+    category: 'Benign Example',
+    url: 'https://github.com/microsoft/vscode',
+  },
+]
 
 export default function ScanUrlPage() {
+  const toast = useToast()
+  const [userEmail, setUserEmail] = useState<string | undefined>()
+  const [userRole, setUserRole] = useState<string>('user')
+
   const [url, setUrl] = useState('')
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<FullScanResult | null>(null)
-  const [error, setError] = useState<string | null>(null)
+
+  // Fetch session for Navbar
+  useEffect(() => {
+    async function loadUser() {
+      try {
+        const supabase = createBrowserClient()
+        const {
+          data: { user },
+        } = await supabase.auth.getUser()
+        if (user) {
+          setUserEmail(user.email)
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('role')
+            .eq('id', user.id)
+            .single()
+          if (profile?.role) setUserRole(profile.role)
+        }
+      } catch {
+        // Fallback to default
+      }
+    }
+    loadUser()
+  }, [])
 
   async function handleScan(e: React.FormEvent) {
     e.preventDefault()
-    setError(null)
     setResult(null)
 
     const trimmed = url.trim()
     if (!trimmed) {
-      setError('Please enter a URL to scan.')
+      toast.warning('Input Required', 'Please enter a target URL to analyze.')
       return
     }
 
     setLoading(true)
+
     try {
       const res = await fetch('/api/scan/url', {
         method: 'POST',
@@ -87,207 +90,296 @@ export default function ScanUrlPage() {
       const data = await res.json()
 
       if (!res.ok) {
-        setError(data.error ?? 'Scan failed. Please try again.')
+        toast.error('Scan Error', data.error ?? 'URL analysis failed.')
       } else {
-        setResult(data as FullScanResult)
+        const scanResult = data as FullScanResult
+        setResult(scanResult)
+
+        if (scanResult.risk_level === 'HIGH_RISK') {
+          toast.threat(
+            'Hostile Phishing Threat Flagged!',
+            `Risk Score: ${scanResult.risk_score}/100. High-probability malicious link detected.`
+          )
+        } else if (scanResult.risk_level === 'SUSPICIOUS') {
+          toast.warning(
+            'Suspicious Indicators Found',
+            `Risk Score: ${scanResult.risk_score}/100. Potential brand spoofing or abnormal domain structure.`
+          )
+        } else {
+          toast.success(
+            'URL Verified Safe',
+            `Risk Score: ${scanResult.risk_score}/100. No security threats detected.`
+          )
+        }
       }
     } catch {
-      setError('Network error — please check your connection and try again.')
+      toast.error('Network Error', 'Unable to reach the scanning server. Check your connection.')
     } finally {
       setLoading(false)
     }
   }
 
-  const riskConfig = result ? RISK_CONFIG[result.risk_level as RiskLevel] : null
-  const signals = result?.signals as Signals | undefined
-
-  // Detect degraded state from reasons[] (server appends notes when degraded)
-  const sbDegraded = result?.reasons?.some(r => r.includes('Safe Browsing') && r.includes('unavailable'))
-  const vtDegraded = result?.reasons?.some(r => r.includes('VirusTotal') && r.includes('unavailable'))
-  const bothDegraded = result?.reasons?.some(r => r.includes('Both Safe Browsing and VirusTotal are unavailable'))
+  function handleReset() {
+    setResult(null)
+    setUrl('')
+  }
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-950 to-slate-900 p-4 sm:p-6">
-      <div className="max-w-2xl mx-auto">
-        {/* Header */}
-        <div className="mb-6 sm:mb-8">
-          <Link href="/dashboard" className="text-slate-400 hover:text-slate-300 text-sm flex items-center gap-1 mb-4">
-            ← Back to Dashboard
-          </Link>
-          <h1 className="text-2xl sm:text-3xl font-bold text-white">URL Scanner</h1>
-          <p className="text-slate-400 mt-1 text-sm sm:text-base">
-            Analyze any link for phishing signals across 4 independent sources
-          </p>
-        </div>
+    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col">
+      <Navbar userEmail={userEmail} role={userRole} />
 
-        {/* Scan form */}
-        <form onSubmit={handleScan} className="mb-6 sm:mb-8">
-          <div className="flex flex-col sm:flex-row gap-3">
-            <input
-              id="url-input"
-              type="text"
-              value={url}
-              onChange={e => setUrl(e.target.value)}
-              placeholder="https://example.com or paste any link"
-              disabled={loading}
-              className="flex-1 px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 text-sm sm:text-base"
-            />
+      <main className="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
+          <div>
+            <div className="flex items-center gap-2 text-xs font-mono text-slate-400 mb-1">
+              <Link href="/dashboard" className="hover:text-blue-400 transition-colors">
+                Dashboard
+              </Link>
+              <span>/</span>
+              <span className="text-cyan-400">URL Threat Inspector</span>
+            </div>
+            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-white flex items-center gap-2.5">
+              <span>🔗 Multi-Signal URL Phishing Scanner</span>
+            </h1>
+            <p className="text-xs sm:text-sm text-slate-400 mt-1">
+              Real-time deep inference combining Rule Engine heuristics, ML classifier, Safe Browsing, and VirusTotal.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2">
             <button
-              id="scan-url-btn"
-              type="submit"
-              disabled={loading || !url.trim()}
-              className="px-6 py-3 bg-blue-600 hover:bg-blue-500 disabled:bg-blue-800 disabled:cursor-not-allowed text-white font-semibold rounded-xl transition-colors whitespace-nowrap shadow-lg shadow-blue-500/20 text-sm sm:text-base"
+              type="button"
+              onClick={handleReset}
+              className="px-3.5 py-2 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 text-xs font-medium text-slate-300 transition-colors cursor-pointer"
             >
-              {loading ? (
-                <span className="flex items-center justify-center gap-2">
-                  <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-                  </svg>
-                  Scanning…
-                </span>
-              ) : 'Scan URL'}
+              Clear Workspace
             </button>
           </div>
-          {error && (
-            <p role="alert" className="mt-3 text-red-400 text-sm bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2">
-              {error}
-            </p>
-          )}
-        </form>
+        </div>
 
-        {/* Result */}
-        {result && riskConfig && signals && (
-          <div id="scan-result" className="space-y-4">
-            {/* Degraded Signal Banner — Edge-Cases.md: Combined quota exhaustion */}
-            {bothDegraded && (
-              <div
-                role="alert"
-                className="flex items-start gap-3 p-4 rounded-xl bg-orange-500/10 border border-orange-500/30 text-sm"
-              >
-                <span className="text-orange-400 text-lg mt-0.5 shrink-0">⚠️</span>
-                <div>
-                  <div className="font-semibold text-orange-300">Reduced Confidence — External APIs Unavailable</div>
-                  <div className="text-orange-200/70 mt-1">
-                    Both Google Safe Browsing and VirusTotal are currently degraded or rate-limited.
-                    This result is based on heuristic rules and the ML model only.
-                    Treat SAFE verdicts with extra caution.
-                  </div>
-                </div>
-              </div>
-            )}
+        {/* Bento Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          {/* Scanner Input (Col 1-7) */}
+          <div className="lg:col-span-7 space-y-6">
+            <div className="bg-slate-900/60 border border-white/10 rounded-2xl p-6 backdrop-blur-xl shadow-xl relative overflow-hidden">
+              <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-blue-500/40 via-cyan-400/40 to-transparent" />
 
-            {/* Single API degraded (not both) */}
-            {!bothDegraded && (sbDegraded || vtDegraded) && (
-              <div
-                role="alert"
-                className="flex items-start gap-3 p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-sm"
-              >
-                <span className="text-amber-400 text-lg mt-0.5 shrink-0">⚡</span>
-                <div>
-                  <div className="font-semibold text-amber-300">Partial Signal Degradation</div>
-                  <div className="text-amber-200/70 mt-1">
-                    {sbDegraded && 'Google Safe Browsing is currently unavailable. '}
-                    {vtDegraded && 'VirusTotal lookup is currently unavailable. '}
-                    The remaining signals are still active.
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Main verdict card */}
-            <div className={`rounded-2xl border p-5 sm:p-6 ${riskConfig.bg} ${riskConfig.border}`}>
-              {/* Verdict header */}
-              <div className="flex items-center gap-3 sm:gap-4 mb-5">
-                <span className="text-3xl sm:text-4xl">{riskConfig.icon}</span>
-                <div className="flex-1 min-w-0">
-                  <div className={`text-xl sm:text-2xl font-bold ${riskConfig.color}`}>
-                    {riskConfig.label}
-                  </div>
-                  <div className="text-slate-300 text-sm mt-0.5">
-                    Risk score: <span className="font-semibold">{result.risk_score}/100</span>
-                    <span className="text-slate-500 ml-2 text-xs">
-                      ({result.risk_score < 30 ? '0–29 Safe' : result.risk_score < 70 ? '30–69 Suspicious' : '70–100 High Risk'})
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Score bar */}
-              <div className="h-1.5 w-full bg-slate-800 rounded-full overflow-hidden mb-5">
-                <div
-                  className={`h-full rounded-full transition-all duration-700 ${
-                    result.risk_score < 30 ? 'bg-emerald-500' : result.risk_score < 70 ? 'bg-amber-500' : 'bg-red-500'
-                  }`}
-                  style={{ width: `${Math.max(result.risk_score, 2)}%` }}
-                />
-              </div>
-
-              {/* Signal breakdown */}
-              <div className="mb-5">
-                <h2 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">
-                  Signal Breakdown
-                </h2>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
-                  <SignalBadge label="Rule Engine" value={signals.rules} />
-                  <SignalBadge
-                    label="Safe Browsing"
-                    value={signals.safeBrowsing}
-                    degraded={sbDegraded}
-                  />
-                  <SignalBadge
-                    label="VirusTotal"
-                    value={signals.virusTotal}
-                    degraded={vtDegraded}
-                  />
-                  <SignalBadge
-                    label="ML Signal"
-                    value={signals.ml !== null ? `${Math.round(signals.ml * 100)}%` : null}
-                  />
-                </div>
-              </div>
-
-              {/* Reasons */}
-              {result.reasons.length > 0 && (
-                <div>
-                  <h2 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">
-                    Detection Details ({result.reasons.length})
-                  </h2>
-                  <ul className="space-y-2">
-                    {result.reasons.map((reason, i) => (
-                      <li
-                        key={i}
-                        className="flex items-start gap-2 text-sm text-slate-200 bg-white/5 rounded-lg px-3 py-2"
-                      >
-                        <span className="mt-0.5 shrink-0 text-blue-400">•</span>
-                        {/* Sanitized — reason strings come from our own rule engine, not user input */}
-                        <span className="break-words min-w-0">{reason}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              {result.reasons.length === 0 && (
-                <p className="text-slate-400 text-sm">
-                  No specific threat signals detected. Always exercise caution with unknown links.
-                </p>
-              )}
-
-              {/* Scan again */}
-              <div className="mt-5 pt-4 border-t border-white/10">
-                <button
-                  id="scan-again-btn"
-                  onClick={() => { setResult(null); setUrl(''); setError(null) }}
-                  className="text-sm text-slate-400 hover:text-slate-300 transition-colors"
+              <form onSubmit={handleScan} className="space-y-4">
+                <label
+                  htmlFor="url-input"
+                  className="block text-xs font-semibold uppercase tracking-wider text-slate-300"
                 >
-                  ← Scan another URL
-                </button>
+                  Target URL / Domain
+                </label>
+
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <div className="relative flex-1">
+                    <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-500 text-sm">
+                      🌐
+                    </span>
+                    <input
+                      id="url-input"
+                      type="text"
+                      autoComplete="off"
+                      autoFocus
+                      required
+                      value={url}
+                      onChange={(e) => setUrl(e.target.value)}
+                      placeholder="e.g. https://account-update.verify-paypal.com/auth"
+                      className="w-full pl-10 pr-4 py-3 bg-slate-950/70 border border-white/15 rounded-xl text-white placeholder-slate-600 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all shadow-inner"
+                    />
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={loading || !url.trim()}
+                    className="px-6 py-3 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-800 disabled:text-slate-500 disabled:cursor-not-allowed text-white text-xs font-semibold rounded-xl transition-all shadow-lg shadow-blue-600/20 flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap"
+                  >
+                    {loading ? (
+                      <>
+                        <svg className="animate-spin h-3.5 w-3.5 text-white" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                        </svg>
+                        <span>Scanning 4 Signals…</span>
+                      </>
+                    ) : (
+                      'Inspect Threat'
+                    )}
+                  </button>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-4 text-[11px] font-mono text-slate-400 pt-1">
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-blue-400" />
+                    ML Model (235k dataset)
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-cyan-400" />
+                    20+ Heuristic Rules
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                    VirusTotal Multi-AV
+                  </span>
+                </div>
+              </form>
+            </div>
+
+            {/* Quick Threat Test Samples */}
+            <div className="bg-slate-900/40 border border-white/10 rounded-2xl p-5 backdrop-blur-md">
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-3">
+                Pre-Loaded Test Vectors
+              </h3>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                {SAMPLE_URLS.map((sample) => (
+                  <button
+                    key={sample.title}
+                    type="button"
+                    onClick={() => {
+                      setUrl(sample.url)
+                      setResult(null)
+                    }}
+                    className="p-3 rounded-xl bg-white/[0.02] border border-white/10 hover:border-blue-500/40 hover:bg-blue-950/20 text-left transition-all cursor-pointer group"
+                  >
+                    <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-white/5 text-cyan-400 border border-white/10">
+                      {sample.category}
+                    </span>
+                    <p className="text-xs font-medium text-slate-200 mt-1.5 group-hover:text-blue-300">
+                      {sample.title}
+                    </p>
+                    <p className="text-[10px] font-mono text-slate-500 truncate mt-0.5">
+                      {sample.url}
+                    </p>
+                  </button>
+                ))}
               </div>
             </div>
           </div>
-        )}
-      </div>
-    </main>
+
+          {/* Results Bento (Col 8-12) */}
+          <div className="lg:col-span-5 space-y-6">
+            {result ? (
+              <div className="bg-slate-900/60 border border-white/10 rounded-2xl p-6 backdrop-blur-xl shadow-2xl relative overflow-hidden animate-in fade-in zoom-in-95">
+                <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-cyan-500/50 to-transparent" />
+
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                    Analysis Breakdown
+                  </h2>
+                  <span className="text-[10px] font-mono text-slate-500 select-all">
+                    Scan ID: {result.id ? result.id.slice(0, 8) : 'Real-time'}
+                  </span>
+                </div>
+
+                {/* Risk Gauge */}
+                <div className="my-3">
+                  <RiskGauge
+                    score={result.risk_score}
+                    level={result.risk_level as RiskLevel}
+                    size={170}
+                  />
+                </div>
+
+                {/* Multi-Signal Matrix */}
+                <div className="mt-6 border-t border-white/10 pt-4">
+                  <h3 className="text-xs font-semibold text-slate-300 uppercase tracking-wider mb-3">
+                    Signal Matrix
+                  </h3>
+                  <div className="grid grid-cols-2 gap-2.5 font-mono text-xs">
+                    <div className="p-3 rounded-xl bg-slate-950/70 border border-white/10">
+                      <span className="text-slate-500 text-[10px] block">ML Inference</span>
+                      <span className="text-cyan-400 font-bold mt-0.5 block">
+                        {result.signals.ml !== null ? `${result.signals.ml} pts` : 'Bypassed'}
+                      </span>
+                    </div>
+
+                    <div className="p-3 rounded-xl bg-slate-950/70 border border-white/10">
+                      <span className="text-slate-500 text-[10px] block">Heuristic Score</span>
+                      <span className="text-blue-400 font-bold mt-0.5 block">
+                        {result.signals.rules} pts
+                      </span>
+                    </div>
+
+                    <div className="p-3 rounded-xl bg-slate-950/70 border border-white/10">
+                      <span className="text-slate-500 text-[10px] block">VirusTotal</span>
+                      <span
+                        className={`font-bold mt-0.5 block ${
+                          result.degraded?.virusTotal
+                            ? 'text-amber-400'
+                            : result.signals.virusTotal
+                            ? 'text-red-400'
+                            : 'text-emerald-400'
+                        }`}
+                      >
+                        {result.degraded?.virusTotal
+                          ? 'Degraded'
+                          : result.signals.virusTotal
+                          ? 'Malicious'
+                          : 'Clean'}
+                      </span>
+                    </div>
+
+                    <div className="p-3 rounded-xl bg-slate-950/70 border border-white/10">
+                      <span className="text-slate-500 text-[10px] block">Safe Browsing</span>
+                      <span
+                        className={`font-bold mt-0.5 block ${
+                          result.degraded?.safeBrowsing
+                            ? 'text-slate-400'
+                            : result.signals.safeBrowsing
+                            ? 'text-red-400'
+                            : 'text-emerald-400'
+                        }`}
+                      >
+                        {result.degraded?.safeBrowsing
+                          ? 'Degraded'
+                          : result.signals.safeBrowsing
+                          ? 'Blacklisted'
+                          : 'Clean'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Threat Reasons */}
+                <div className="mt-5 border-t border-white/10 pt-4 space-y-2">
+                  <h3 className="text-xs font-semibold text-slate-300 uppercase tracking-wider">
+                    Diagnostic Traces ({result.reasons.length})
+                  </h3>
+                  {result.reasons.length === 0 ? (
+                    <p className="text-xs text-emerald-400 font-mono">
+                      ✅ No anomalies detected across all heuristics.
+                    </p>
+                  ) : (
+                    <ul className="space-y-1.5 max-h-44 overflow-y-auto pr-1">
+                      {result.reasons.map((reason, idx) => (
+                        <li
+                          key={idx}
+                          className="p-2.5 rounded-lg bg-slate-950/80 border border-white/5 text-xs text-slate-300 flex items-start gap-2 leading-relaxed"
+                        >
+                          <span className="text-amber-400">⚠️</span>
+                          <span>{reason}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="h-full min-h-[360px] bg-slate-900/30 border border-dashed border-white/10 rounded-2xl p-8 flex flex-col items-center justify-center text-center">
+                <div className="w-16 h-16 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center text-2xl text-slate-500 mb-3">
+                  🌐
+                </div>
+                <h3 className="text-sm font-semibold text-slate-300">Scanner on Standby</h3>
+                <p className="text-xs text-slate-500 mt-1 max-w-xs leading-relaxed">
+                  Enter a target domain or test sample on the left to run cross-layer threat analysis.
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      </main>
+    </div>
   )
 }

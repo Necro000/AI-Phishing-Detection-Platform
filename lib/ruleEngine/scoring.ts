@@ -33,6 +33,7 @@ export interface Signals {
 }
 
 export interface ScanResult {
+  id?: string
   risk_level: RiskLevel
   risk_score: number
   reasons: string[]

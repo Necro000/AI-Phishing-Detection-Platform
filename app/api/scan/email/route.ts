@@ -66,6 +66,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Email content is required' }, { status: 400 })
   }
 
+  // Server-side backstop: hard ceiling on request body size (2MB)
+  if (rawContent.length > 2 * 1024 * 1024) {
+    return NextResponse.json({ error: 'Payload exceeds maximum allowed size (2MB)' }, { status: 413 })
+  }
+
   // Edge-Cases.md: Cap stored and processed length to avoid request hanging
   let processedContent = rawContent
   let storedInput = rawContent
@@ -116,31 +121,41 @@ export async function POST(request: NextRequest) {
 
   // ── 6. Persist to scans table ─────────────────────────────────────────────
   // Explicit null signals for email scans (Architecture.md §4 & §5)
+  let scanId: string | undefined
   try {
     const serviceClient = createServiceClient()
-    const { error: insertError } = await serviceClient.from('scans').insert({
-      user_id: user.id,
-      scan_type: 'email',
-      input: storedInput,
-      risk_level: scanResult.risk_level,
-      risk_score: scanResult.risk_score,
-      reasons: scanResult.reasons,
-      signals: {
-        rules: scanResult.signals.rules,
-        safeBrowsing: null,
-        virusTotal: null,
-        ml: null,
-      },
-    })
+    const { data: insertedScan, error: insertError } = await serviceClient
+      .from('scans')
+      .insert({
+        user_id: user.id,
+        scan_type: 'email',
+        input: storedInput,
+        risk_level: scanResult.risk_level,
+        risk_score: scanResult.risk_score,
+        reasons: scanResult.reasons,
+        signals: {
+          rules: scanResult.signals.rules,
+          safeBrowsing: null,
+          virusTotal: null,
+          ml: null,
+        },
+      })
+      .select('id')
+      .single()
 
     if (insertError) {
       console.error('[scan/email] Failed to persist scan record:', insertError.message)
       // Continue and return verdict even if history persistence hits a temporary DB error
+    } else if (insertedScan?.id) {
+      scanId = insertedScan.id
     }
   } catch (err) {
     console.error('[scan/email] Unexpected error persisting scan:', err)
   }
 
   // ── 7. Respond with frozen contract ───────────────────────────────────────
-  return NextResponse.json(scanResult, { status: 200 })
+  return NextResponse.json({
+    ...scanResult,
+    ...(scanId ? { id: scanId } : {}),
+  }, { status: 200 })
 }

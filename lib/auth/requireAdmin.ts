@@ -18,8 +18,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabaseServiceClient'
 
 export async function requireAdmin(
-  request: NextRequest
+  _request?: NextRequest
 ): Promise<{ userId: string; error: null } | { userId: null; error: NextResponse }> {
+  void _request
   // Step 1: Read the user's session from the request cookies (anon-scoped, for auth only)
   const cookieStore = await cookies()
 

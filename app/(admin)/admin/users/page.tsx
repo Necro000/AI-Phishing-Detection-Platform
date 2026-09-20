@@ -65,7 +65,7 @@ export default async function AdminUsersPage() {
     countByUser[user_id] = (countByUser[user_id] ?? 0) + 1
   }
 
-  let emailById: Record<string, string> = {}
+  const emailById: Record<string, string> = {}
   try {
     const { data: authData } = await serviceClient.auth.admin.listUsers({ perPage: 1000 })
     for (const u of authData?.users ?? []) {

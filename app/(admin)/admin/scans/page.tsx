@@ -174,7 +174,7 @@ export default async function AdminScansPage({ searchParams }: Props) {
                 <tbody className="divide-y divide-white/5">
                   {scans.map((scan) => {
                     const badge = RISK_BADGE[scan.risk_level] ?? RISK_BADGE.SUSPICIOUS
-                    const userEmail = emailById[scan.user_id] ?? scan.user_id.slice(0, 8) + '...'
+                    const userEmail = emailById[scan.user_id] ?? (scan.user_id ? scan.user_id.slice(0, 8) + '...' : '(unknown)')
                     return (
                       <tr key={scan.id} className="hover:bg-white/5 transition">
                         <td className="py-3 px-3 text-xs text-slate-300 font-mono whitespace-nowrap">

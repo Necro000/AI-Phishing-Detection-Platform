@@ -17,15 +17,19 @@
 
 import { createClient } from '@supabase/supabase-js'
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
-
-/**
- * Service-role client — bypasses RLS.
- * ONLY use in server-side code. Never expose SUPABASE_SERVICE_ROLE_KEY to the client.
- */
 export function createServiceClient() {
-  return createClient(supabaseUrl, supabaseServiceRoleKey, {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY
+
+  if (!url || (!url.startsWith('http://') && !url.startsWith('https://')) || url === 'your-supabase-project-url') {
+    throw new Error('Supabase URL is not configured. Please set NEXT_PUBLIC_SUPABASE_URL in .env.local.')
+  }
+
+  if (!key || key === 'your-supabase-service-role-key') {
+    throw new Error('Supabase service role key is not configured. Please set SUPABASE_SERVICE_ROLE_KEY in .env.local.')
+  }
+
+  return createClient(url, key, {
     auth: {
       // Service-role client should not persist sessions
       autoRefreshToken: false,

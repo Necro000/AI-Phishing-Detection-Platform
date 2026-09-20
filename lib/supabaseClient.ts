@@ -13,13 +13,17 @@
 
 import { createBrowserClient as _createBrowserClient } from '@supabase/ssr'
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-
-/**
- * Browser / Client Component client — uses anon key, subject to RLS.
- * Safe to call from client-side code.
- */
 export function createBrowserClient() {
-  return _createBrowserClient(supabaseUrl, supabaseAnonKey)
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+  if (!url || (!url.startsWith('http://') && !url.startsWith('https://')) || url === 'your-supabase-project-url') {
+    throw new Error('Supabase is not configured yet. Please provide a valid NEXT_PUBLIC_SUPABASE_URL (e.g. https://xyz.supabase.co) in .env.local.')
+  }
+
+  if (!key || key === 'your-supabase-anon-key') {
+    throw new Error('Supabase anon key is not configured. Please provide NEXT_PUBLIC_SUPABASE_ANON_KEY in .env.local.')
+  }
+
+  return _createBrowserClient(url, key)
 }
