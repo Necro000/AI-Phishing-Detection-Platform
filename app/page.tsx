@@ -1,5 +1,7 @@
 import Link from 'next/link'
 import type { Metadata } from 'next'
+import { headers } from 'next/headers'
+import { redirect } from 'next/navigation'
 import { StatsBar } from '@/components/landing/StatsBar'
 import { FeatureBentoCards } from '@/components/landing/FeatureBentoCards'
 import { SiteFooter } from '@/components/landing/SiteFooter'
@@ -10,7 +12,15 @@ export const metadata: Metadata = {
     'Detect deceptive URLs and hostile email phishing attacks using rule heuristics, Google Safe Browsing, VirusTotal multi-scanner, and trained PhiUSIIL ML models.',
 }
 
-export default function HomePage() {
+export default async function HomePage() {
+  const headersList = await headers()
+  const host = headersList.get('host') || ''
+
+  // When deployed on Render (Backend Service), redirect root URL immediately to pure API JSON
+  if (host.includes('onrender.com') || process.env.RENDER === 'true') {
+    redirect('/api')
+  }
+
   return (
     <main className="min-h-screen bg-slate-950 text-slate-100 selection:bg-blue-500/30 selection:text-blue-200 overflow-x-hidden">
       {/* Background ambient lighting effects */}
