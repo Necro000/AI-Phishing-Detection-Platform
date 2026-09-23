@@ -9,6 +9,11 @@ export const metadata: Metadata = {
   title: 'AI Phishing Detection Platform',
   description:
     'Enterprise AI platform to detect phishing URLs and hostile emails using rule-based heuristics, Google Safe Browsing, VirusTotal, and trained ML models.',
+  icons: {
+    icon: '/icon.svg',
+    shortcut: '/icon.svg',
+    apple: '/icon.svg',
+  },
 }
 
 export default function RootLayout({
