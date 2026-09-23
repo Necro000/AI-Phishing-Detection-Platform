@@ -260,7 +260,15 @@ npm run start
 | **Keyword & IOC Manager Console** | ✅ Complete | Signature Forge, 1–40 pts slider, and Live Sandbox Simulator. |
 | **Zero Trust User Directory** | ✅ Complete | Root admin privilege tier, threat vectors, and user telemetry drawer. |
 | **Automated Test Coverage** | ✅ Complete | 76 automated test cases covering security, logic, and integration. |
-| **Production Cloud Deployment** | ⏳ **Next Milestone** | Final step: Deploying to Vercel / Cloud and binding production environment keys. |
+| **Production Cloud Deployment** | ✅ Complete | Live on 3-tier architecture: Vercel (Frontend), Render (Dedicated Backend API), and Supabase (PostgreSQL). |
+
+### 🌐 Live Cloud Architecture & Deployment Links
+
+| Layer | Provider | Live URL | Description |
+| :--- | :--- | :--- | :--- |
+| **Frontend UI** | **Vercel** | [Live Web Application](https://ai-phishing-detection-platform-necromencer873-2046s-projects.vercel.app/) | Responsive threat console, dark mode UI, URL/email scanners, and dashboard. |
+| **Backend API** | **Render** | [Live API Gateway](https://ai-phishing-detection-platform-4tor.onrender.com/) | Dedicated Node.js backend server with health check gateway and `/api/scan/*` endpoints. |
+| **Database & Auth** | **Supabase** | `Hosted PostgreSQL` | Relational threat logs, custom keyword sets, and secure session management. |
 
 ---
 
