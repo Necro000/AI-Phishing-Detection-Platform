@@ -10,9 +10,13 @@ export const metadata: Metadata = {
   description:
     'Enterprise AI platform to detect phishing URLs and hostile emails using rule-based heuristics, Google Safe Browsing, VirusTotal, and trained ML models.',
   icons: {
-    icon: '/icon.svg',
-    shortcut: '/icon.svg',
-    apple: '/icon.svg',
+    icon: [
+      { url: '/favicon.ico', sizes: 'any' },
+      { url: '/icon.svg', type: 'image/svg+xml' },
+      { url: '/icon.png', type: 'image/png', sizes: '32x32' },
+    ],
+    shortcut: '/favicon.ico',
+    apple: '/icon.png',
   },
 }
 
