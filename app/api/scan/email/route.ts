@@ -29,6 +29,20 @@ import type { DbKeyword } from '@/lib/ruleEngine/urlRules'
 const MAX_EMAIL_LENGTH = 10000 // Edge-Cases.md: >10,000 chars → cap stored/displayed length
 const TRUNCATE_NOTE = ' [truncated — content exceeded 10,000 characters]'
 
+export async function GET() {
+  return NextResponse.json(
+    {
+      status: 'online',
+      service: 'PhishGuard Email Threat Scanner Backend',
+      method_required: 'POST',
+      message: 'Backend is active and listening. To perform an analysis, send an HTTP POST request with a JSON body containing { "content": "email text or message headers" }.',
+      supported_engines: ['Social Engineering Detection', 'Credential Harvesting Rules', 'Urgency & Pressure Heuristics'],
+      documentation: '/api',
+    },
+    { status: 200 }
+  )
+}
+
 export async function POST(request: NextRequest) {
   // ── 1. Session verification ───────────────────────────────────────────────
   const cookieStore = await cookies()

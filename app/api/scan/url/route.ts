@@ -38,6 +38,20 @@ import type { DbKeyword } from '@/lib/ruleEngine/urlRules'
 const MAX_INPUT_LENGTH = 2000   // Edge-Cases.md: URL > ~2000 chars → truncate for storage
 const STORAGE_TRUNCATE_NOTE = ' [truncated — original URL exceeded 2000 characters]'
 
+export async function GET() {
+  return NextResponse.json(
+    {
+      status: 'online',
+      service: 'PhishGuard URL Scanner Backend',
+      method_required: 'POST',
+      message: 'Backend is active and listening. To perform an analysis, send an HTTP POST request with a JSON body containing { "url": "https://example.com" }.',
+      supported_engines: ['Rule Engine (Heuristics)', 'VirusTotal Intelligence', 'ML Domain Classifier'],
+      documentation: '/api',
+    },
+    { status: 200 }
+  )
+}
+
 export async function POST(request: NextRequest) {
   // ── 1. Session check ── before ANY external call (Edge-Cases.md cross-cutting)
   const cookieStore = await cookies()
