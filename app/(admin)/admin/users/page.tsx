@@ -1,22 +1,19 @@
 /**
  * Admin Users page — Server Component
  *
- * Verifies admin role server-side before rendering.
- * Displays all registered users, roles, and scan counts.
+ * Verifies admin role server-side from DB before rendering.
+ * Aggregates user accounts, sole root admin status, threat vectors, and recent scans.
+ * Upgraded to Zero Trust User Threat Console with interactive slide-out drawer.
  */
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { createServiceClient } from '@/lib/supabaseServiceClient'
-
-interface UserSummary {
-  id: string
-  email: string
-  role: string
-  scan_count: number
-  created_at?: string
-}
+import { Navbar } from '@/components/Navbar'
+import AdminUsersConsole from '@/components/admin/users/AdminUsersConsole'
+import { EnrichedUser, UserScanSummary } from '@/components/admin/users/UserThreatDrawer'
+import { CyberTerminalIcon, CyberShieldIcon, CyberRadarIcon, CyberUserIcon } from '@/components/icons/CyberIcons'
 
 export default async function AdminUsersPage() {
   const cookieStore = await cookies()
@@ -50,21 +47,22 @@ export default async function AdminUsersPage() {
 
   if (!profile || profile.role !== 'admin') redirect('/dashboard')
 
-  // Fetch profiles + scan count aggregations + auth users email
-  const { data: profiles } = await serviceClient
-    .from('profiles')
-    .select('id, role, created_at')
-    .order('created_at', { ascending: false })
+  // Fetch profiles + scans in parallel
+  const [
+    { data: profilesData },
+    { data: scansData },
+  ] = await Promise.all([
+    serviceClient
+      .from('profiles')
+      .select('id, role, created_at')
+      .order('created_at', { ascending: false }),
+    serviceClient
+      .from('scans')
+      .select('id, user_id, input, scan_type, risk_level, risk_score, created_at')
+      .order('created_at', { ascending: false }),
+  ])
 
-  const { data: scanCounts } = await serviceClient
-    .from('scans')
-    .select('user_id')
-
-  const countByUser: Record<string, number> = {}
-  for (const { user_id } of (scanCounts ?? [])) {
-    countByUser[user_id] = (countByUser[user_id] ?? 0) + 1
-  }
-
+  // Fetch user emails from auth admin
   const emailById: Record<string, string> = {}
   try {
     const { data: authData } = await serviceClient.auth.admin.listUsers({ perPage: 1000 })
@@ -75,100 +73,120 @@ export default async function AdminUsersPage() {
     console.warn('[admin/users] Could not fetch auth.users email list:', err)
   }
 
-  const users: UserSummary[] = (profiles ?? []).map((p) => ({
-    id: p.id,
-    email: emailById[p.id] ?? '(unknown)',
-    role: p.role,
-    scan_count: countByUser[p.id] ?? 0,
-    created_at: p.created_at,
-  }))
+  // Precompute scan aggregations per user
+  const userScansMap: Record<string, UserScanSummary[]> = {}
+  const safeCountMap: Record<string, number> = {}
+  const suspiciousCountMap: Record<string, number> = {}
+  const highRiskCountMap: Record<string, number> = {}
+
+  for (const scan of scansData ?? []) {
+    const uid = scan.user_id
+    if (!userScansMap[uid]) userScansMap[uid] = []
+    if (userScansMap[uid].length < 5) {
+      userScansMap[uid].push({
+        id: scan.id,
+        input: scan.input,
+        scan_type: scan.scan_type,
+        risk_level: scan.risk_level,
+        risk_score: scan.risk_score,
+        created_at: scan.created_at,
+      })
+    }
+
+    if (scan.risk_level === 'SAFE') {
+      safeCountMap[uid] = (safeCountMap[uid] ?? 0) + 1
+    } else if (scan.risk_level === 'SUSPICIOUS') {
+      suspiciousCountMap[uid] = (suspiciousCountMap[uid] ?? 0) + 1
+    } else if (scan.risk_level === 'HIGH_RISK') {
+      highRiskCountMap[uid] = (highRiskCountMap[uid] ?? 0) + 1
+    }
+  }
+
+  const enrichedUsers: EnrichedUser[] = (profilesData ?? []).map((p) => {
+    const safeCount = safeCountMap[p.id] ?? 0
+    const suspiciousCount = suspiciousCountMap[p.id] ?? 0
+    const highRiskCount = highRiskCountMap[p.id] ?? 0
+    const totalCount = safeCount + suspiciousCount + highRiskCount
+
+    return {
+      id: p.id,
+      email: emailById[p.id] ?? '(unknown)',
+      role: p.role as string,
+      created_at: p.created_at,
+      scan_count: totalCount,
+      safe_count: safeCount,
+      suspicious_count: suspiciousCount,
+      high_risk_count: highRiskCount,
+      recent_scans: userScansMap[p.id] ?? [],
+    }
+  })
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-950 to-slate-900 p-6 sm:p-8">
-      <div className="max-w-5xl mx-auto">
-        {/* Navigation Header */}
-        <div className="flex items-center justify-between mb-8">
+    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col relative overflow-hidden font-sans">
+      {/* Ambient background glow */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute -top-40 left-1/2 -translate-x-1/2 w-[1000px] h-[500px] bg-gradient-to-b from-cyan-500/10 via-blue-600/5 to-transparent blur-3xl"
+      />
+
+      {/* Global Navbar */}
+      <Navbar userEmail={user.email} role="admin" />
+
+      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 relative z-10 space-y-8">
+        {/* ── Navigation Header ──────────────────────────────────────────────── */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-            <div className="flex items-center gap-2 text-xs text-slate-400 mb-2">
-              <Link href="/dashboard" className="hover:text-slate-200">Dashboard</Link>
+            <div className="flex items-center gap-2 text-xs font-mono text-slate-400 mb-1.5">
+              <Link href="/dashboard" className="hover:text-cyan-400 transition">Dashboard</Link>
               <span>/</span>
-              <span className="text-slate-200">Admin</span>
+              <span className="text-slate-400">Admin</span>
               <span>/</span>
-              <span className="text-blue-400">Users</span>
+              <span className="text-cyan-400 flex items-center gap-1">
+                <CyberTerminalIcon size={12} />
+                User Identities
+              </span>
             </div>
-            <h1 className="text-3xl font-bold text-white">Registered Users</h1>
-            <p className="text-slate-400 text-sm mt-1">
-              All platform accounts, assigned roles, and scan activity volumes
+
+            <div className="flex flex-wrap items-center gap-3">
+              <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-white flex items-center gap-2.5">
+                <span>Cyber SOC — User Directory &amp; Threat Profiles</span>
+              </h1>
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-500/10 border border-purple-500/30 text-xs font-mono text-purple-300">
+                <span className="w-2 h-2 rounded-full bg-purple-400 animate-pulse" />
+                <span>ROOT AUTHORITY: SOHIT@GMAIL.COM // 1 ADMIN</span>
+              </div>
+            </div>
+            <p className="text-xs sm:text-sm text-slate-400 mt-1">
+              Zero Trust user registry, privilege tiering, and individual threat exposure audit
             </p>
           </div>
 
-          <div className="flex items-center gap-2">
-            <span className="px-3 py-1.5 rounded-lg text-xs font-medium bg-blue-600 text-white">
+          {/* Sub-navigation tabs */}
+          <div className="inline-flex p-1 rounded-full bg-slate-900/90 border border-white/10 text-xs font-semibold backdrop-blur-xl">
+            <span className="px-3.5 py-1.5 rounded-full bg-gradient-to-r from-blue-600 to-cyan-600 text-white shadow-md shadow-cyan-500/20 flex items-center gap-1.5">
+              <CyberUserIcon size={13} />
               Users
             </span>
             <Link
               href="/admin/scans"
-              className="px-3 py-1.5 rounded-lg text-xs font-medium bg-white/5 hover:bg-white/10 text-slate-300 transition"
+              className="px-3.5 py-1.5 rounded-full text-slate-400 hover:text-white transition flex items-center gap-1.5"
             >
+              <CyberRadarIcon size={13} />
               All Scans
             </Link>
             <Link
               href="/admin/keywords"
-              className="px-3 py-1.5 rounded-lg text-xs font-medium bg-white/5 hover:bg-white/10 text-slate-300 transition"
+              className="px-3.5 py-1.5 rounded-full text-slate-400 hover:text-white transition flex items-center gap-1.5"
             >
-              Keywords
+              <CyberShieldIcon size={13} />
+              Keywords &amp; IOCs
             </Link>
           </div>
         </div>
 
-        {/* Users Table */}
-        <div className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-sm">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold text-white">User Directory</h2>
-            <span className="text-xs text-slate-400">Total Users: {users.length}</span>
-          </div>
-
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm text-slate-300">
-              <thead className="text-xs uppercase text-slate-400 border-b border-white/10">
-                <tr>
-                  <th className="py-3 px-3">Email</th>
-                  <th className="py-3 px-3">Role</th>
-                  <th className="py-3 px-3">Scans Performed</th>
-                  <th className="py-3 px-3 text-right">Registered</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-white/5">
-                {users.map((u) => (
-                  <tr key={u.id} className="hover:bg-white/5 transition">
-                    <td className="py-3 px-3 font-medium text-white">
-                      {/* React safely escapes text preventing XSS */}
-                      {u.email}
-                    </td>
-                    <td className="py-3 px-3">
-                      <span
-                        className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${
-                          u.role === 'admin'
-                            ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
-                            : 'bg-white/10 text-slate-300 border border-white/10'
-                        }`}
-                      >
-                        {u.role}
-                      </span>
-                    </td>
-                    <td className="py-3 px-3">
-                      <span className="font-semibold text-blue-400">{u.scan_count}</span>
-                    </td>
-                    <td className="py-3 px-3 text-right text-xs text-slate-400 whitespace-nowrap">
-                      {u.created_at ? new Date(u.created_at).toLocaleDateString() : '—'}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-    </main>
+        {/* Client User Directory & Threat Inspector Console */}
+        <AdminUsersConsole initialUsers={enrichedUsers} />
+      </main>
+    </div>
   )
 }

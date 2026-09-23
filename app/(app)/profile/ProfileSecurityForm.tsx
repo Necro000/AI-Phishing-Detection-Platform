@@ -233,8 +233,7 @@ export function ProfileSecurityForm({ userEmail }: Props) {
         <div className="p-4 rounded-xl bg-blue-500/5 border border-blue-500/15 text-xs text-slate-300 flex items-start gap-2.5">
           <span className="text-blue-400 text-base leading-none">🛡️</span>
           <p className="leading-relaxed">
-            Re-authentication verifies you are the authorized session holder. Password updates are encrypted via
-            bcrypt and logged in the security audit stream.
+            Pre-flight re-authentication verifies you are the authorized account holder before credential modification is permitted by Supabase Auth.
           </p>
         </div>
 

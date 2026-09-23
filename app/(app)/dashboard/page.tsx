@@ -1,10 +1,13 @@
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
-import Link from 'next/link'
 import { createServiceClient } from '@/lib/supabaseServiceClient'
 import { Navbar } from '@/components/Navbar'
 import { DashboardHistoryTable } from '@/components/DashboardHistoryTable'
+import { BentoQuickScanner } from '@/components/BentoQuickScanner'
+import { BentoThreatRadar } from '@/components/BentoThreatRadar'
+import { BentoTelemetryCards } from '@/components/BentoTelemetryCards'
+import { BentoRecentThreats } from '@/components/BentoRecentThreats'
 
 interface ScanRow {
   id: string
@@ -53,7 +56,7 @@ export default async function DashboardPage() {
 
   if (!user) redirect('/login')
 
-  // Check if current user is admin for quick navigation link
+  // Check role
   const serviceClient = createServiceClient()
   const { data: profile } = await serviceClient
     .from('profiles')
@@ -62,9 +65,8 @@ export default async function DashboardPage() {
     .single()
 
   const userRole = profile?.role ?? 'user'
-  const isAdmin = userRole === 'admin'
 
-  // Fetch recent scans for this user
+  // Fetch recent scans
   const { data: scansData } = await supabase
     .from('scans')
     .select('*')
@@ -73,130 +75,62 @@ export default async function DashboardPage() {
     .limit(20)
 
   const scans = (scansData ?? []) as ScanRow[]
-
-  const totalScans = scans.length
-  const safeCount = scans.filter((s) => s.risk_level === 'SAFE').length
-  const suspiciousCount = scans.filter((s) => s.risk_level === 'SUSPICIOUS').length
   const highRiskCount = scans.filter((s) => s.risk_level === 'HIGH_RISK').length
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col">
+    <div className="min-h-screen bg-[#030712] text-slate-100 flex flex-col relative overflow-hidden">
+      {/* Ambient Deep Space Cyber Mesh with Subtle Scatter Dots */}
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-cyan-950/20 via-[#030712] to-[#030712] pointer-events-none" />
+      <div className="absolute top-10 left-1/3 w-[600px] h-[350px] bg-cyan-500/[0.04] rounded-full blur-[140px] pointer-events-none" />
+      <div className="absolute bottom-10 right-1/4 w-[500px] h-[350px] bg-blue-600/[0.04] rounded-full blur-[150px] pointer-events-none" />
+
+      {/* Global Top Navbar */}
       <Navbar userEmail={user.email} role={userRole} />
 
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Welcome Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
-          <div>
-            <div className="flex items-center gap-2 mb-1.5">
-              <span className="text-xs font-mono px-2 py-0.5 rounded-full bg-blue-500/10 border border-blue-500/25 text-blue-300">
-                Active Session
-              </span>
-              {isAdmin && (
-                <span className="text-xs font-mono px-2 py-0.5 rounded-full bg-purple-500/10 border border-purple-500/25 text-purple-300">
-                  Admin Privileged
-                </span>
-              )}
-            </div>
-            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-white">
-              Threat Intelligence Command
-            </h1>
-            <p className="text-xs sm:text-sm text-slate-400 mt-1">
-              Welcome back, <span className="text-slate-200 font-medium">{user.email}</span>. Monitor threats and run real-time scans.
-            </p>
-          </div>
-
+      <main className="flex-1 max-w-[1440px] w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6 relative z-10">
+        {/* Sub-Header matching Mockup */}
+        <div className="flex items-center justify-between">
+          <h1 className="text-2xl font-bold tracking-tight text-white font-sans">
+            Dashboard
+          </h1>
           <div className="flex items-center gap-3">
-            <Link
-              href="/profile"
-              className="px-4 py-2.5 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 text-xs font-medium text-slate-200 transition-colors flex items-center gap-2"
-            >
-              <span>👤</span>
-              <span>Security Center</span>
-            </Link>
-            {isAdmin && (
-              <Link
-                href="/admin/scans"
-                className="px-4 py-2.5 rounded-xl border border-purple-500/30 bg-purple-600/20 hover:bg-purple-600/30 text-xs font-medium text-purple-200 transition-colors flex items-center gap-2"
-              >
-                <span>⚙️</span>
-                <span>Admin Audit</span>
-              </Link>
-            )}
-          </div>
-        </div>
-
-        {/* Bento Stats Grid */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-          <div className="p-5 bg-slate-900/60 border border-white/10 rounded-2xl backdrop-blur-xl shadow-lg relative overflow-hidden">
-            <div className="text-slate-400 text-xs uppercase font-mono tracking-wider">Total Scans</div>
-            <div className="text-3xl font-bold font-mono text-white mt-2">{totalScans}</div>
-            <div className="text-[11px] text-slate-500 mt-1">Lifetime user activity</div>
-          </div>
-
-          <div className="p-5 bg-slate-900/60 border border-red-500/20 rounded-2xl backdrop-blur-xl shadow-lg relative overflow-hidden">
-            <div className="text-red-300 text-xs uppercase font-mono tracking-wider">Hostile Threats</div>
-            <div className="text-3xl font-bold font-mono text-red-400 mt-2">{highRiskCount}</div>
-            <div className="text-[11px] text-red-300/70 mt-1">High-risk flagged links/emails</div>
-          </div>
-
-          <div className="p-5 bg-slate-900/60 border border-amber-500/20 rounded-2xl backdrop-blur-xl shadow-lg relative overflow-hidden">
-            <div className="text-amber-300 text-xs uppercase font-mono tracking-wider">Suspicious</div>
-            <div className="text-3xl font-bold font-mono text-amber-400 mt-2">{suspiciousCount}</div>
-            <div className="text-[11px] text-amber-300/70 mt-1">Anomalous heuristics</div>
-          </div>
-
-          <div className="p-5 bg-slate-900/60 border border-emerald-500/20 rounded-2xl backdrop-blur-xl shadow-lg relative overflow-hidden">
-            <div className="text-emerald-300 text-xs uppercase font-mono tracking-wider">Clean / Safe</div>
-            <div className="text-3xl font-bold font-mono text-emerald-400 mt-2">{safeCount}</div>
-            <div className="text-[11px] text-emerald-300/70 mt-1">Zero threat indicators</div>
-          </div>
-        </div>
-
-        {/* Quick Launchers */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
-          <Link
-            href="/scan/url"
-            className="p-6 bg-slate-900/60 border border-white/10 rounded-2xl hover:border-blue-500/50 hover:bg-slate-900/80 transition-all group backdrop-blur-xl shadow-xl relative overflow-hidden"
-          >
-            <div className="flex items-center justify-between mb-3">
-              <div className="w-12 h-12 rounded-xl bg-blue-600/20 border border-blue-500/30 flex items-center justify-center text-2xl group-hover:scale-105 transition-transform">
-                🔗
-              </div>
-              <span className="text-xs text-blue-400 group-hover:translate-x-1 transition-transform font-mono">
-                Launch Scanner &rarr;
-              </span>
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-900/80 border border-white/10 text-xs text-slate-300">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="font-mono text-[11px] truncate max-w-[160px] sm:max-w-none">{user.email}</span>
             </div>
-            <h2 className="text-base font-bold text-white group-hover:text-blue-300 transition-colors">
-              Multi-Signal URL Scanner
-            </h2>
-            <p className="text-xs text-slate-400 mt-1.5 leading-relaxed">
-              Scan links with 20+ heuristic rules, ML model inference, Google Safe Browsing, and VirusTotal AV feeds.
-            </p>
-          </Link>
-
-          <Link
-            href="/scan/email"
-            className="p-6 bg-slate-900/60 border border-white/10 rounded-2xl hover:border-cyan-500/50 hover:bg-slate-900/80 transition-all group backdrop-blur-xl shadow-xl relative overflow-hidden"
-          >
-            <div className="flex items-center justify-between mb-3">
-              <div className="w-12 h-12 rounded-xl bg-cyan-600/20 border border-cyan-500/30 flex items-center justify-center text-2xl group-hover:scale-105 transition-transform">
-                📧
-              </div>
-              <span className="text-xs text-cyan-400 group-hover:translate-x-1 transition-transform font-mono">
-                Launch Analyzer &rarr;
-              </span>
-            </div>
-            <h2 className="text-base font-bold text-white group-hover:text-cyan-300 transition-colors">
-              Email & File Phishing Analyzer
-            </h2>
-            <p className="text-xs text-slate-400 mt-1.5 leading-relaxed">
-              Drag and drop .eml or text files to inspect coercive urgency, credential theft, and spoofed domains.
-            </p>
-          </Link>
+          </div>
         </div>
 
-        {/* Scan History Table with Interactive Deletion */}
-        <DashboardHistoryTable initialScans={scans} />
+        {/* Bento Row 1: Quick Scanner (5 cols) + Telemetry Stack (3 cols) + Threat Radar (4 cols) */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch">
+          {/* Top-Left: Instant In-Place Scanner */}
+          <div className="lg:col-span-5 flex flex-col">
+            <BentoQuickScanner />
+          </div>
+
+          {/* Top-Middle: 99.4% Precision & 142ms Latency Stack */}
+          <div className="lg:col-span-3 flex flex-col">
+            <BentoTelemetryCards />
+          </div>
+
+          {/* Top-Right: Circular Threat Radar */}
+          <div className="lg:col-span-4 flex flex-col">
+            <BentoThreatRadar threatCount={highRiskCount} />
+          </div>
+        </div>
+
+        {/* Bento Row 2: Recent Threat Callouts (4 cols) + Scan History Table (8 cols) */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch">
+          {/* Bottom-Left: Credential Harvester & Typosquatting Stack */}
+          <div className="lg:col-span-4 flex flex-col">
+            <BentoRecentThreats scans={scans} />
+          </div>
+
+          {/* Bottom-Right: Scan History Table */}
+          <div className="lg:col-span-8 flex flex-col">
+            <DashboardHistoryTable initialScans={scans} />
+          </div>
+        </div>
       </main>
     </div>
   )

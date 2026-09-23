@@ -59,25 +59,34 @@ const SUSPICIOUS_TLDS = new Set([
 
 /** Rule: Urgency & Coercive Phrasing (structural linguistic heuristic) */
 function checkUrgencyPatterns(text: string): RuleHit | null {
-  const lower = text.toLowerCase()
-  const patterns = [
-    { phrase: 'within 24 hours', score: 20 },
-    { phrase: 'within 48 hours', score: 15 },
-    { phrase: 'immediate action required', score: 25 },
-    { phrase: 'account will be suspended', score: 30 },
-    { phrase: 'account will be terminated', score: 30 },
-    { phrase: 'action required immediately', score: 25 },
-    { phrase: 'act immediately', score: 20 },
-    { phrase: 'security compromised', score: 25 },
-    { phrase: 'unauthorized login detected', score: 25 },
-    { phrase: 'failure to respond will result', score: 25 },
+  const patterns: { regex: RegExp; label: string; score: number }[] = [
+    {
+      regex: /\b(?:action required|immediate(?:ly)? action|act immediately|urgent(?:ly)? action|immediate attention required)\b/i,
+      label: 'Action Required / Immediate Action Demand',
+      score: 25,
+    },
+    {
+      regex: /\b(?:expires? in \d+\s*(?:days?|hours?|mins?|minutes?)|will expire in|expir(?:ing|y) (?:soon|today|within)|deadline (?:is|approaching))\b/i,
+      label: 'Imminent Expiration / Artificial Deadline Pressure',
+      score: 25,
+    },
+    {
+      regex: /\b(?:avoid losing access|loss of access|account (?:will be|has been) (?:suspended|terminated|disabled|locked|closed)|losing access to your (?:inbox|account|documents))\b/i,
+      label: 'Threat of Account Suspension or Inbox Lockout',
+      score: 30,
+    },
+    {
+      regex: /\b(?:within (?:24|48|72|\d+)\s*(?:hours?|hrs?|days?)|failure to respond will result|unauthorized (?:login|access) detected|security compromised)\b/i,
+      label: 'Time-Limited Coercion / Unauthorized Access Alarm',
+      score: 25,
+    },
   ]
 
-  for (const { phrase, score } of patterns) {
-    if (lower.includes(phrase)) {
+  for (const { regex, label, score } of patterns) {
+    if (regex.test(text)) {
       return {
         rule: 'urgency_coercion',
-        reason: `Email uses urgent or coercive language ("${phrase}") to pressure immediate action`,
+        reason: `Email uses urgent or coercive pressure tactics (${label})`,
         score,
       }
     }
@@ -87,24 +96,102 @@ function checkUrgencyPatterns(text: string): RuleHit | null {
 
 /** Rule: Credential & Identity Harvesting */
 function checkCredentialHarvesting(text: string): RuleHit | null {
-  const lower = text.toLowerCase()
-  const patterns = [
-    { phrase: 'verify your password', score: 30 },
-    { phrase: 'confirm your password', score: 35 },
-    { phrase: 'enter your credentials', score: 30 },
-    { phrase: 'provide your social security', score: 35 },
-    { phrase: 'verify your identity to restore', score: 30 },
-    { phrase: 'send your one-time password', score: 35 },
-    { phrase: 'update your billing details immediately', score: 25 },
+  const patterns: { regex: RegExp; label: string; score: number }[] = [
+    {
+      regex: /\b(?:password.*(?:will expire|expires?)|(?:re-?change|change|renew|keep.*same|update)\s+(?:your\s+)?(?:same\s+)?password)\b/i,
+      label: 'Password Expiration or Renewal Prompt',
+      score: 35,
+    },
+    {
+      regex: /\b(?:verify your password|confirm your password|enter your (?:credentials|password|login)|provide your (?:password|credentials|social security)|update your (?:credentials|login details))\b/i,
+      label: 'Direct Credential or Password Solicitation',
+      score: 35,
+    },
+    {
+      regex: /\b(?:send your (?:one-?time|otp|verification) code|provide the code sent to|share your 2fa code)\b/i,
+      label: 'Two-Factor (2FA/OTP) Authentication Theft Lure',
+      score: 35,
+    },
+    {
+      regex: /\b(?:update your billing details immediately|verify your identity to restore)\b/i,
+      label: 'Identity / Billing Verification Trap',
+      score: 25,
+    },
   ]
 
-  for (const { phrase, score } of patterns) {
-    if (lower.includes(phrase)) {
+  for (const { regex, label, score } of patterns) {
+    if (regex.test(text)) {
       return {
         rule: 'credential_harvesting',
-        reason: `Email solicits credentials or sensitive personal information ("${phrase}")`,
+        reason: `Email solicits credentials or authentication secrets (${label})`,
         score,
       }
+    }
+  }
+  return null
+}
+
+/** Rule: IT Department & Authority Impersonation */
+function checkAuthorityImpersonation(text: string): RuleHit | null {
+  const patterns: { regex: RegExp; label: string; score: number }[] = [
+    {
+      regex: /\b(?:it (?:help\s*desk|support(?: team)?|department|admin|team)|system administrator|help\s*desk support|security operations team|account admin(?:istration)?)\b/i,
+      label: 'IT Help Desk / Administrator Impersonation',
+      score: 25,
+    },
+    {
+      regex: /\b(?:microsoft 365 (?:support|team)|google workspace (?:support|team)|office 365 security|cisco webex security)\b/i,
+      label: 'Cloud Platform Authority Spoofing',
+      score: 25,
+    },
+  ]
+
+  for (const { regex, label, score } of patterns) {
+    if (regex.test(text)) {
+      return {
+        rule: 'authority_impersonation',
+        reason: `Email impersonates trusted IT or administrative authority (${label})`,
+        score,
+      }
+    }
+  }
+  return null
+}
+
+/** Rule: Generic Impersonal Salutation */
+function checkGenericSalutation(text: string): RuleHit | null {
+  const regex = /(?:^|\b|\W)(?:dear (?:email )?user|dear (?:valued )?customer|dear account (?:holder|owner|user)|dear client|dear member)(?:[,\s]|$)/i
+  if (regex.test(text)) {
+    return {
+      rule: 'generic_salutation',
+      reason: 'Email uses a generic, impersonal greeting ("Dear Email User") typical of automated mass phishing lures',
+      score: 15,
+    }
+  }
+  return null
+}
+
+/** Rule: Call-To-Action Link / Button Trap */
+function checkCallToActionTraps(text: string): RuleHit | null {
+  const regex = /\b(?:click (?:the|this)? (?:link|button) below|click here to (?:re-?change|reset|verify|confirm|update|keep)|follow (?:the|this) link below)\b/i
+  if (regex.test(text)) {
+    return {
+      rule: 'call_to_action_trap',
+      reason: 'Email coerces recipient to click an embedded action link for account/security remediation',
+      score: 20,
+    }
+  }
+  return null
+}
+
+/** Rule: Explicit Suspicious / Malicious Link Markers */
+function checkSuspiciousLinkMarkers(text: string): RuleHit | null {
+  const regex = /(?:\(malicious link\)|\(phishing link\)|\(untrusted link\)|\[malicious link\]|\[phishing link\])/i
+  if (regex.test(text)) {
+    return {
+      rule: 'suspicious_link_marker',
+      reason: 'Email contains explicit threat test notation or simulated malicious link marker',
+      score: 25,
     }
   }
   return null
@@ -296,6 +383,10 @@ export function runEmailRules(content: string, keywords: DbKeyword[]): RuleHit[]
   const structuralHits: (RuleHit | null)[] = [
     checkUrgencyPatterns(content),
     checkCredentialHarvesting(content),
+    checkAuthorityImpersonation(content),
+    checkGenericSalutation(content),
+    checkCallToActionTraps(content),
+    checkSuspiciousLinkMarkers(content),
     checkFinancialFraud(content),
     checkExcessiveCaps(content),
   ]

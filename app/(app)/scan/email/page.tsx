@@ -9,6 +9,7 @@ import { RiskGauge } from '@/components/RiskGauge'
 import { useToast } from '@/components/ToastProvider'
 import { createBrowserClient } from '@/lib/supabaseClient'
 import type { ParsedEmailResult } from '@/lib/mimeParser'
+import { CyberFileIcon } from '@/components/icons/CyberIcons'
 
 type RiskLevel = 'SAFE' | 'SUSPICIOUS' | 'HIGH_RISK'
 
@@ -147,8 +148,11 @@ export default function ScanEmailPage() {
               <span>/</span>
               <span className="text-cyan-400">Email Analyzer</span>
             </div>
-            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-white flex items-center gap-2.5">
-              <span>📧 Email & File Phishing Analyzer</span>
+            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-white flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center">
+                <CyberFileIcon size={20} glow />
+              </div>
+              <span>Email &amp; File Phishing Analyzer</span>
             </h1>
             <p className="text-xs sm:text-sm text-slate-400 mt-1">
               Detect deceptive headers, credential harvesting, extortion, and spoofed URLs.
@@ -199,79 +203,119 @@ export default function ScanEmailPage() {
 
               {activeTab === 'file' ? (
                 <div className="space-y-4">
-                  <DropZone onParsed={handleFileParsed} disabled={loading} />
-
-                  {sourceFileName && parsedMetadata && (
-                    <div className="p-4 rounded-xl bg-slate-950/70 border border-cyan-500/30 text-xs space-y-2 font-mono">
-                      <div className="flex items-center justify-between text-cyan-400 font-semibold">
-                        <span>Ingested: {sourceFileName}</span>
-                        <span>{parsedMetadata.extractedUrls.length} Link(s)</span>
+                  {!sourceFileName ? (
+                    <DropZone onParsed={handleFileParsed} disabled={loading} />
+                  ) : (
+                    <div className="space-y-4">
+                      <div className="p-4 rounded-xl bg-slate-950/70 border border-cyan-500/30 text-xs space-y-2 font-mono">
+                        <div className="flex items-center justify-between text-cyan-400 font-semibold border-b border-white/10 pb-2">
+                          <span className="flex items-center gap-2">
+                            <span>📄</span>
+                            <span>{sourceFileName}</span>
+                          </span>
+                          <span className="px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-300 text-[10px]">
+                            {parsedMetadata?.extractedUrls.length ?? 0} Link(s) extracted
+                          </span>
+                        </div>
+                        {parsedMetadata?.subject && (
+                          <div>
+                            <span className="text-slate-500">Subject: </span>
+                            <span className="text-slate-300 font-sans">{parsedMetadata.subject}</span>
+                          </div>
+                        )}
+                        {parsedMetadata?.from && (
+                          <div>
+                            <span className="text-slate-500">From: </span>
+                            <span className="text-slate-300">{parsedMetadata.from}</span>
+                          </div>
+                        )}
                       </div>
-                      {parsedMetadata.subject && (
-                        <div>
-                          <span className="text-slate-500">Subject: </span>
-                          <span className="text-slate-300">{parsedMetadata.subject}</span>
-                        </div>
-                      )}
-                      {parsedMetadata.from && (
-                        <div>
-                          <span className="text-slate-500">From: </span>
-                          <span className="text-slate-300">{parsedMetadata.from}</span>
-                        </div>
-                      )}
+
+                      <div className="flex items-center justify-between pt-1">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSourceFileName(null)
+                            setParsedMetadata(null)
+                            setContent('')
+                          }}
+                          className="text-xs text-slate-400 hover:text-white transition-colors cursor-pointer"
+                        >
+                          ← Choose a different file
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleScan({ preventDefault: () => {} } as React.FormEvent)}
+                          disabled={loading || !content.trim()}
+                          className="px-6 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-800 disabled:text-slate-500 disabled:cursor-not-allowed text-white text-xs font-semibold rounded-xl transition-all shadow-lg shadow-blue-600/20 flex items-center gap-2 cursor-pointer"
+                        >
+                          {loading ? (
+                            <>
+                              <svg className="animate-spin h-3.5 w-3.5 text-white" fill="none" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                              </svg>
+                              <span>Analyzing Ingested File…</span>
+                            </>
+                          ) : (
+                            'Analyze Ingested Email'
+                          )}
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>
-              ) : null}
+              ) : (
+                /* Raw Text Input Mode */
+                <form onSubmit={handleScan} className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <label
+                      htmlFor="email-input-text"
+                      className="block text-xs font-semibold uppercase tracking-wider text-slate-300"
+                    >
+                      Message Body (Untrusted Plaintext)
+                    </label>
+                    <span className="text-[11px] font-mono text-slate-500">
+                      {content.length} characters
+                    </span>
+                  </div>
 
-              {/* Text Input Area */}
-              <form onSubmit={handleScan} className="mt-4 space-y-4">
-                <div className="flex items-center justify-between">
-                  <label
-                    htmlFor="email-input-text"
-                    className="block text-xs font-semibold uppercase tracking-wider text-slate-300"
-                  >
-                    Message Body (Untrusted Plaintext)
-                  </label>
-                  <span className="text-[11px] font-mono text-slate-500">
-                    {content.length} characters
-                  </span>
-                </div>
+                  <textarea
+                    id="email-input-text"
+                    rows={10}
+                    value={content}
+                    onChange={(e) => setContent(e.target.value)}
+                    placeholder="Paste email headers, subject line, and body text here to run pattern analysis…"
+                    className="w-full px-4 py-3 bg-slate-950/70 border border-white/15 rounded-xl text-slate-200 placeholder-slate-600 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all resize-y"
+                  />
 
-                <textarea
-                  id="email-input-text"
-                  rows={activeTab === 'file' ? 6 : 10}
-                  value={content}
-                  onChange={(e) => setContent(e.target.value)}
-                  placeholder="Drop an .eml file above or paste email headers and body here…"
-                  className="w-full px-4 py-3 bg-slate-950/70 border border-white/15 rounded-xl text-slate-200 placeholder-slate-600 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all resize-y"
-                />
+                  <div className="flex items-center justify-between pt-2">
+                    <span className="text-[11px] text-slate-400 flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                      Zero API quota consumed (Pure Pattern Engine)
+                    </span>
 
-                <div className="flex items-center justify-between pt-2">
-                  <span className="text-[11px] text-slate-400 flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-emerald-400" />
-                    Zero API quota consumed (Pure Pattern Engine)
-                  </span>
-
-                  <button
-                    type="submit"
-                    disabled={loading || !content.trim()}
-                    className="px-6 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-800 disabled:text-slate-500 disabled:cursor-not-allowed text-white text-xs font-semibold rounded-xl transition-all shadow-lg shadow-blue-600/20 flex items-center gap-2 cursor-pointer"
-                  >
-                    {loading ? (
-                      <>
-                        <svg className="animate-spin h-3.5 w-3.5 text-white" fill="none" viewBox="0 0 24 24">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-                        </svg>
-                        <span>Analyzing Patterns…</span>
-                      </>
-                    ) : (
-                      'Analyze Email Threats'
-                    )}
-                  </button>
-                </div>
-              </form>
+                    <button
+                      type="submit"
+                      disabled={loading || !content.trim()}
+                      className="px-6 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-800 disabled:text-slate-500 disabled:cursor-not-allowed text-white text-xs font-semibold rounded-xl transition-all shadow-lg shadow-blue-600/20 flex items-center gap-2 cursor-pointer"
+                    >
+                      {loading ? (
+                        <>
+                          <svg className="animate-spin h-3.5 w-3.5 text-white" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                          </svg>
+                          <span>Analyzing Patterns…</span>
+                        </>
+                      ) : (
+                        'Analyze Email Threats'
+                      )}
+                    </button>
+                  </div>
+                </form>
+              )}
             </div>
 
             {/* Quick Threat Test Samples */}

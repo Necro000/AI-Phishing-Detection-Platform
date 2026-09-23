@@ -178,6 +178,56 @@ function checkBrandImpersonation(parsed: URL): RuleHit | null {
   return null
 }
 
+/**
+ * Rule: Cloud/SaaS form credential abuse — weight 20
+ *
+ * Attackers host phishing credential forms on legitimate free SaaS platforms
+ * (Google Forms, Office Forms, Tally, Firebase, Weebly, Typeform) which have
+ * pristine domain reputations. Flag when the URL path/query contains credential
+ * or financial harvesting keywords — conservative +20 pts (can push SUSPICIOUS,
+ * never HIGH_RISK alone, consistent with Architecture.md §4 weight cap).
+ */
+const CLOUD_FORM_HOSTS = new Set([
+  'docs.google.com',
+  'forms.gle',
+  'forms.office.com',
+  'forms.microsoft.com',
+  'tally.so',
+  'typeform.com',
+  'firebaseapp.com',
+  'web.app',
+  'weebly.com',
+  'wixsite.com',
+  'sites.google.com',
+])
+
+const CREDENTIAL_PATH_TERMS = [
+  'password', 'passwd', 'login', 'signin', 'sign-in', 'verify',
+  'credential', 'ssn', 'pin', 'account', 'banking', 'payment',
+  'credit-card', 'cvv', 'social-security',
+]
+
+function checkCloudFormAbuse(parsed: URL, rawUrl: string): RuleHit | null {
+  const hostname = parsed.hostname.toLowerCase()
+  if (!CLOUD_FORM_HOSTS.has(hostname)) return null
+
+  const searchable = (parsed.pathname + parsed.search + parsed.hash).toLowerCase()
+  const rawLower = rawUrl.toLowerCase()
+
+  const matched = CREDENTIAL_PATH_TERMS.find(
+    (term) => searchable.includes(term) || rawLower.includes(term)
+  )
+
+  if (matched) {
+    return {
+      rule: 'cloud_form_credential_abuse',
+      reason: `Credential-harvesting form hosted on a trusted public SaaS platform (${hostname}) — attackers commonly abuse free form builders to bypass domain reputation checks (matched term: "${matched}")`,
+      score: 20,
+    }
+  }
+  return null
+}
+
 /** Rule: Keyword matches from the DB keywords table (or fallback defaults) — weight per keyword */
 function checkKeywords(url: string, keywords: DbKeyword[]): RuleHit[] {
   const urlLower = url.toLowerCase()
@@ -206,8 +256,12 @@ const PRIVATE_IP_PATTERNS = [
   /^172\.(1[6-9]|2\d|3[01])\.\d+\.\d+$/,
   /^192\.168\.\d+\.\d+$/,
   /^127\.\d+\.\d+\.\d+$/,
+  /^169\.254\.\d+\.\d+$/, // AWS / Azure / GCP link-local metadata
   /^::1$/,
+  /^::ffff:127\.\d+\.\d+\.\d+$/, // IPv4-mapped loopback
+  /^::ffff:169\.254\.\d+\.\d+$/, // IPv4-mapped metadata
   /^localhost$/i,
+  /^metadata\.google\.internal$/i,
   /^0\.0\.0\.0$/,
 ]
 
@@ -263,6 +317,7 @@ export function runUrlRules(rawUrl: string, keywords: DbKeyword[]): UrlRuleResul
     checkSuspiciousTld(parsed),
     checkHyphenHeavyDomain(parsed),
     checkBrandImpersonation(parsed),
+    checkCloudFormAbuse(parsed, normalizedUrl),
   ]
 
   const hits: RuleHit[] = [

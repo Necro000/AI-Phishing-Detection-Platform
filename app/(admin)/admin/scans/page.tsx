@@ -5,15 +5,26 @@
  * Role verified server-side before rendering.
  * Edge-Cases.md: Admin browser is NOT a trusted context — raw user inputs are safely escaped.
  * Edge-Cases.md: Paginated view for large scan volume.
+ *
+ * v2 (SOC Upgrade): Added KPI telemetry cards, multi-dimensional server-side
+ * filtering (q, verdict, type), and forensic investigation drawer via
+ * AdminScansTable + AdminThreatDrawer client components.
  */
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
+import { Suspense } from 'react'
 import { createServiceClient } from '@/lib/supabaseServiceClient'
+import { Navbar } from '@/components/Navbar'
+import AdminThreatKpis from '@/components/AdminThreatKpis'
+import AdminScansTable from '@/components/AdminScansTable'
+import AdminScansFilterBar from '@/components/AdminScansFilterBar'
+import { ScanActivityChart, DailyActivityPoint } from '@/components/ScanActivityChart'
+import { CyberShieldIcon, CyberTerminalIcon, CyberRadarIcon } from '@/components/icons/CyberIcons'
 
 interface Props {
-  searchParams: Promise<{ page?: string }>
+  searchParams: Promise<{ page?: string; q?: string; verdict?: string; type?: string }>
 }
 
 interface ScanRow {
@@ -25,24 +36,58 @@ interface ScanRow {
   risk_score: number
   reasons: string[]
   signals: {
-    rules: number
-    safeBrowsing: boolean | null
-    virusTotal: boolean | null
-    ml: number | null
+    rules?: number | null
+    safeBrowsing?: boolean | null
+    virusTotal?: boolean | null
+    vtVendors?: number | null
+    ml?: number | null
   }
   created_at: string
 }
 
-const RISK_BADGE: Record<
-  string,
-  { label: string; text: string; bg: string; border: string }
-> = {
-  SAFE: { label: 'Safe', text: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/30' },
-  SUSPICIOUS: { label: 'Suspicious', text: 'text-amber-400', bg: 'bg-amber-500/10', border: 'border-amber-500/30' },
-  HIGH_RISK: { label: 'High Risk', text: 'text-red-400', bg: 'bg-red-500/10', border: 'border-red-500/30' },
+const PAGE_SIZE = 25
+
+/** Returns an ISO timestamp 24h ago. Server-only helper (not a hook or client render fn). */
+function get24hAgoISO() {
+  return new Date(Date.now() - 86400000).toISOString()
 }
 
-const PAGE_SIZE = 25
+/** Returns an ISO timestamp 7 days ago. Server-only helper. */
+function get7DaysAgoISO() {
+  return new Date(Date.now() - 7 * 86400000).toISOString()
+}
+
+interface RawTimelineScan {
+  created_at: string
+  risk_level: 'SAFE' | 'SUSPICIOUS' | 'HIGH_RISK'
+}
+
+function build7DayActivity(scans: RawTimelineScan[]): DailyActivityPoint[] {
+  const points: DailyActivityPoint[] = []
+  const now = new Date()
+
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(now.getTime() - i * 86400000)
+    const dateStr = d.toISOString().split('T')[0]
+    const label = d.toLocaleDateString('en-US', { weekday: 'short' })
+
+    const matching = scans.filter((s) => s.created_at.startsWith(dateStr))
+    const safe = matching.filter((s) => s.risk_level === 'SAFE').length
+    const suspicious = matching.filter((s) => s.risk_level === 'SUSPICIOUS').length
+    const highRisk = matching.filter((s) => s.risk_level === 'HIGH_RISK').length
+
+    points.push({
+      date: dateStr,
+      label,
+      safe,
+      suspicious,
+      highRisk,
+      total: matching.length,
+    })
+  }
+
+  return points
+}
 
 export default async function AdminScansPage({ searchParams }: Props) {
   const cookieStore = await cookies()
@@ -76,23 +121,79 @@ export default async function AdminScansPage({ searchParams }: Props) {
 
   if (!profile || profile.role !== 'admin') redirect('/dashboard')
 
-  // Pagination calculation
+  // ── Parse search params ──────────────────────────────────────────────────────
   const params = await searchParams
   const currentPage = Math.max(1, parseInt(params.page ?? '1', 10) || 1)
   const offset = (currentPage - 1) * PAGE_SIZE
+  const q = (params.q ?? '').trim()
+  const verdict = params.verdict ?? ''
+  const type = params.type ?? ''
 
-  // Fetch paginated scans for all users
-  const { data: scansData, count } = await serviceClient
+  // ── Parallel: KPI aggregation + paginated filtered scans + 7-day timeline ─────
+  const [
+    { count: totalScans },
+    { count: highRiskCount },
+    { count: suspiciousCount },
+    { count: urlCount },
+    { count: emailCount },
+    { count: last24hCount },
+    { data: weeklyScansData },
+  ] = await Promise.all([
+    serviceClient.from('scans').select('*', { count: 'exact', head: true }),
+    serviceClient.from('scans').select('*', { count: 'exact', head: true }).eq('risk_level', 'HIGH_RISK'),
+    serviceClient.from('scans').select('*', { count: 'exact', head: true }).eq('risk_level', 'SUSPICIOUS'),
+    serviceClient.from('scans').select('*', { count: 'exact', head: true }).eq('scan_type', 'url'),
+    serviceClient.from('scans').select('*', { count: 'exact', head: true }).eq('scan_type', 'email'),
+    serviceClient.from('scans').select('*', { count: 'exact', head: true })
+      .gte('created_at', get24hAgoISO()),
+    serviceClient.from('scans').select('created_at, risk_level')
+      .gte('created_at', get7DaysAgoISO())
+      .order('created_at', { ascending: true }),
+  ])
+
+  const weeklyActivity = build7DayActivity((weeklyScansData ?? []) as RawTimelineScan[])
+
+  // ── Build filtered scans query ───────────────────────────────────────────────
+  let filteredQuery = serviceClient
     .from('scans')
     .select('*', { count: 'exact' })
     .order('created_at', { ascending: false })
-    .range(offset, offset + PAGE_SIZE - 1)
+
+  if (q) {
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(q)
+    if (isUuid) {
+      filteredQuery = filteredQuery.or(`id.eq.${q},user_id.eq.${q}`)
+    } else {
+      let matchedUserIds: string[] = []
+      try {
+        const { data: authData } = await serviceClient.auth.admin.listUsers({ perPage: 1000 })
+        const qLower = q.toLowerCase()
+        matchedUserIds = (authData?.users ?? [])
+          .filter((u) => u.email?.toLowerCase().includes(qLower))
+          .map((u) => u.id)
+      } catch {
+        // Fall back gracefully to input search only
+      }
+
+      if (matchedUserIds.length > 0) {
+        filteredQuery = filteredQuery.or(
+          `input.ilike.%${q}%,user_id.in.(${matchedUserIds.slice(0, 50).join(',')})`
+        )
+      } else {
+        filteredQuery = filteredQuery.ilike('input', `%${q}%`)
+      }
+    }
+  }
+  if (verdict) filteredQuery = filteredQuery.eq('risk_level', verdict)
+  if (type) filteredQuery = filteredQuery.eq('scan_type', type)
+
+  const { data: scansData, count: filteredCount } = await filteredQuery.range(offset, offset + PAGE_SIZE - 1)
 
   const scans = (scansData ?? []) as ScanRow[]
-  const totalCount = count ?? 0
-  const totalPages = Math.ceil(totalCount / PAGE_SIZE)
+  const totalFilteredCount = filteredCount ?? 0
+  const totalPages = Math.ceil(totalFilteredCount / PAGE_SIZE)
 
-  // Fetch user emails for this page
+  // ── Fetch user emails for scans on this page ─────────────────────────────────
   const userIds = [...new Set(scans.map((s) => s.user_id))]
   const emailById: Record<string, string> = {}
   if (userIds.length > 0) {
@@ -108,159 +209,192 @@ export default async function AdminScansPage({ searchParams }: Props) {
     }
   }
 
+  // ── Enrich scan rows with user email ─────────────────────────────────────────
+  const enrichedScans = scans.map((scan) => ({
+    ...scan,
+    user_email: emailById[scan.user_id] ?? (scan.user_id ? scan.user_id.slice(0, 8) + '…' : '(unknown)'),
+  }))
+
+  // ── Export rows (current filtered page for CSV) ───────────────────────────────
+  const exportRows = enrichedScans.map((s) => ({
+    id: s.id,
+    user_email: s.user_email,
+    scan_type: s.scan_type,
+    input: s.input,
+    risk_level: s.risk_level,
+    risk_score: s.risk_score,
+    created_at: s.created_at,
+  }))
+
+  // ── Build pagination href helper ─────────────────────────────────────────────
+  function pageHref(p: number) {
+    const sp = new URLSearchParams()
+    sp.set('page', String(p))
+    if (q) sp.set('q', q)
+    if (verdict) sp.set('verdict', verdict)
+    if (type) sp.set('type', type)
+    return `/admin/scans?${sp.toString()}`
+  }
+
+  const hasActiveFilter = Boolean(q || verdict || type)
+
   return (
-    <main className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-950 to-slate-900 p-6 sm:p-8">
-      <div className="max-w-6xl mx-auto">
-        {/* Navigation Header */}
-        <div className="flex items-center justify-between mb-8">
+    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col relative overflow-hidden font-sans">
+      {/* Ambient background glow */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute -top-40 left-1/2 -translate-x-1/2 w-[1000px] h-[500px] bg-gradient-to-b from-cyan-500/10 via-blue-600/5 to-transparent blur-3xl"
+      />
+
+      {/* Global Navbar */}
+      <Navbar userEmail={user.email} role="admin" />
+
+      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 relative z-10 space-y-6">
+        {/* ── Navigation Header ──────────────────────────────────────────────── */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-            <div className="flex items-center gap-2 text-xs text-slate-400 mb-2">
-              <Link href="/dashboard" className="hover:text-slate-200">Dashboard</Link>
+            <div className="flex items-center gap-2 text-xs font-mono text-slate-400 mb-1.5">
+              <Link href="/dashboard" className="hover:text-cyan-400 transition">Dashboard</Link>
               <span>/</span>
-              <span className="text-slate-200">Admin</span>
+              <span className="text-slate-400">Admin</span>
               <span>/</span>
-              <span className="text-blue-400">All Scans</span>
+              <span className="text-cyan-400 flex items-center gap-1">
+                <CyberTerminalIcon size={12} />
+                SOC Audit Log
+              </span>
             </div>
-            <h1 className="text-3xl font-bold text-white">All Platform Scans</h1>
-            <p className="text-slate-400 text-sm mt-1">
-              Global threat reports across all users (Context.md §4 Reports view)
+
+            <div className="flex flex-wrap items-center gap-3">
+              <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-white flex items-center gap-2.5">
+                <span>Cyber SOC — Threat Audit</span>
+              </h1>
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/25 text-xs font-mono text-emerald-300">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                <span>STATUS: ACTIVE // LIVE DATA</span>
+              </div>
+            </div>
+            <p className="text-xs sm:text-sm text-slate-400 mt-1">
+              Global threat telemetry &amp; forensic query inspector across all platform users
             </p>
           </div>
 
-          <div className="flex items-center gap-2">
+          {/* Sub-navigation tabs */}
+          <div className="inline-flex p-1 rounded-full bg-slate-900/90 border border-white/10 text-xs font-semibold backdrop-blur-xl">
+            <span className="px-3.5 py-1.5 rounded-full bg-gradient-to-r from-blue-600 to-cyan-600 text-white shadow-md shadow-cyan-500/20 flex items-center gap-1.5">
+              <CyberRadarIcon size={13} />
+              <span>All Scans</span>
+            </span>
             <Link
               href="/admin/users"
-              className="px-3 py-1.5 rounded-lg text-xs font-medium bg-white/5 hover:bg-white/10 text-slate-300 transition"
+              className="px-3.5 py-1.5 rounded-full text-slate-400 hover:text-slate-200 transition-colors"
             >
               Users
             </Link>
-            <span className="px-3 py-1.5 rounded-lg text-xs font-medium bg-blue-600 text-white">
-              All Scans
-            </span>
             <Link
               href="/admin/keywords"
-              className="px-3 py-1.5 rounded-lg text-xs font-medium bg-white/5 hover:bg-white/10 text-slate-300 transition"
+              className="px-3.5 py-1.5 rounded-full text-slate-400 hover:text-slate-200 transition-colors"
             >
               Keywords
             </Link>
           </div>
         </div>
 
-        {/* Scans Table */}
-        <div className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-sm">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold text-white">Scans Audit Log</h2>
-            <span className="text-xs text-slate-400">Total Scans: {totalCount}</span>
+        {/* ── KPI Telemetry Cards ───────────────────────────────────────────── */}
+        <AdminThreatKpis
+          kpi={{
+            totalScans: totalScans ?? 0,
+            highRiskCount: highRiskCount ?? 0,
+            suspiciousCount: suspiciousCount ?? 0,
+            urlCount: urlCount ?? 0,
+            emailCount: emailCount ?? 0,
+            last24hCount: last24hCount ?? 0,
+          }}
+        />
+
+        {/* ── 7-Day Timeline Chart ──────────────────────────────────────────── */}
+        <ScanActivityChart data={weeklyActivity} />
+
+        {/* ── Scans Table Bento Container ───────────────────────────────────── */}
+        <div className="relative rounded-3xl bg-slate-900/60 border border-cyan-500/25 p-6 backdrop-blur-2xl shadow-[0_0_50px_-15px_rgba(6,182,212,0.15)] overflow-hidden">
+          {/* Top subtle cyan energy highlight */}
+          <div className="absolute top-0 left-1/4 right-1/4 h-[2px] bg-gradient-to-r from-transparent via-cyan-400 to-transparent" />
+
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
+            <div>
+              <h2 className="text-lg font-bold text-white tracking-tight flex items-center gap-2">
+                <span>Scans Audit Log</span>
+                <span className="text-xs font-mono font-normal text-slate-400">
+                  ({hasActiveFilter ? `${totalFilteredCount} of ${totalScans ?? 0} records` : `${totalScans ?? 0} total records`})
+                </span>
+              </h2>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Interactive real-time incident records. Click any row to slide open full deep forensic details.
+              </p>
+            </div>
+
+            {hasActiveFilter && (
+              <Link
+                href="/admin/scans"
+                className="text-xs text-rose-400 hover:text-rose-300 transition flex items-center gap-1.5 px-3 py-1 rounded-full bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 font-mono"
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+                Clear All Filters
+              </Link>
+            )}
           </div>
 
-          {scans.length === 0 ? (
-            <div className="text-center py-12 border border-dashed border-white/10 rounded-xl">
-              <p className="text-sm text-slate-400">No scans recorded across the platform yet.</p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm text-slate-300">
-                <thead className="text-xs uppercase text-slate-400 border-b border-white/10">
-                  <tr>
-                    <th className="py-3 px-3">User</th>
-                    <th className="py-3 px-3">Type</th>
-                    <th className="py-3 px-3">Target / Payload</th>
-                    <th className="py-3 px-3">Verdict</th>
-                    <th className="py-3 px-3">Score</th>
-                    <th className="py-3 px-3">Signals</th>
-                    <th className="py-3 px-3 text-right">Timestamp</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-white/5">
-                  {scans.map((scan) => {
-                    const badge = RISK_BADGE[scan.risk_level] ?? RISK_BADGE.SUSPICIOUS
-                    const userEmail = emailById[scan.user_id] ?? (scan.user_id ? scan.user_id.slice(0, 8) + '...' : '(unknown)')
-                    return (
-                      <tr key={scan.id} className="hover:bg-white/5 transition">
-                        <td className="py-3 px-3 text-xs text-slate-300 font-mono whitespace-nowrap">
-                          {/* Safe React text-escaping */}
-                          {userEmail}
-                        </td>
-                        <td className="py-3 px-3 whitespace-nowrap">
-                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-white/5 border border-white/10">
-                            {scan.scan_type === 'url' ? '🔗 URL' : '📧 Email'}
-                          </span>
-                        </td>
-                        <td className="py-3 px-3 max-w-xs truncate font-mono text-xs text-slate-200">
-                          {/* Safe React text escaping — never dangerouslySetInnerHTML */}
-                          {scan.input}
-                        </td>
-                        <td className="py-3 px-3 whitespace-nowrap">
-                          <span
-                            className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold border ${badge.bg} ${badge.text} ${badge.border}`}
-                          >
-                            {badge.label}
-                          </span>
-                        </td>
-                        <td className="py-3 px-3 whitespace-nowrap font-medium text-white">
-                          {scan.risk_score} <span className="text-xs text-slate-500">/100</span>
-                        </td>
-                        <td className="py-3 px-3 whitespace-nowrap text-xs text-slate-400">
-                          {scan.scan_type === 'url' ? (
-                            <span>
-                              R:{scan.signals?.rules ?? 0} | SB:{scan.signals?.safeBrowsing ? '🚨' : '—'} | VT:{scan.signals?.virusTotal ? '🚨' : '—'} | ML:{scan.signals?.ml !== null ? `${Math.round((scan.signals?.ml ?? 0) * 100)}%` : '—'}
-                            </span>
-                          ) : (
-                            <span>R:{scan.signals?.rules ?? 0} (Rules Only)</span>
-                          )}
-                        </td>
-                        <td className="py-3 px-3 whitespace-nowrap text-right text-xs text-slate-400">
-                          {new Date(scan.created_at).toLocaleDateString(undefined, {
-                            month: 'short',
-                            day: 'numeric',
-                            hour: '2-digit',
-                            minute: '2-digit',
-                          })}
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
+          {/* Filter Bar (Client Component — needs Suspense for useSearchParams) */}
+          <Suspense fallback={null}>
+            <AdminScansFilterBar
+              currentQ={q}
+              currentVerdict={verdict}
+              currentType={type}
+              exportRows={exportRows}
+            />
+          </Suspense>
 
-          {/* Pagination Controls */}
+          {/* Interactive Table + Drawer */}
+          <AdminScansTable scans={enrichedScans} />
+
+          {/* ── Pagination Controls ─────────────────────────────────────────── */}
           {totalPages > 1 && (
-            <div className="flex items-center justify-between border-t border-white/10 pt-4 mt-4">
-              <div className="text-xs text-slate-400">
-                Page {currentPage} of {totalPages}
+            <div className="flex items-center justify-between border-t border-white/10 pt-4 mt-6 font-mono text-xs text-slate-400">
+              <div>
+                Page <span className="text-white font-bold">{currentPage}</span> of {totalPages}
+                <span className="ml-2 text-slate-500">({totalFilteredCount} records)</span>
               </div>
               <div className="flex gap-2">
                 {currentPage > 1 ? (
                   <Link
-                    href={`/admin/scans?page=${currentPage - 1}`}
-                    className="px-3 py-1 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-xs text-slate-300"
+                    href={pageHref(currentPage - 1)}
+                    className="px-3 py-1.5 bg-slate-950/80 hover:bg-slate-800 border border-white/10 hover:border-cyan-500/30 rounded-xl text-xs text-slate-300 hover:text-white transition"
                   >
-                    Previous
+                    ← Previous
                   </Link>
                 ) : (
-                  <span className="px-3 py-1 bg-white/5 border border-white/5 rounded-lg text-xs text-slate-600 cursor-not-allowed">
-                    Previous
+                  <span className="px-3 py-1.5 bg-slate-950/40 border border-white/5 rounded-xl text-xs text-slate-600 cursor-not-allowed">
+                    ← Previous
                   </span>
                 )}
                 {currentPage < totalPages ? (
                   <Link
-                    href={`/admin/scans?page=${currentPage + 1}`}
-                    className="px-3 py-1 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-xs text-slate-300"
+                    href={pageHref(currentPage + 1)}
+                    className="px-3 py-1.5 bg-slate-950/80 hover:bg-slate-800 border border-white/10 hover:border-cyan-500/30 rounded-xl text-xs text-slate-300 hover:text-white transition"
                   >
-                    Next
+                    Next →
                   </Link>
                 ) : (
-                  <span className="px-3 py-1 bg-white/5 border border-white/5 rounded-lg text-xs text-slate-600 cursor-not-allowed">
-                    Next
+                  <span className="px-3 py-1.5 bg-slate-950/40 border border-white/5 rounded-xl text-xs text-slate-600 cursor-not-allowed">
+                    Next →
                   </span>
                 )}
               </div>
             </div>
           )}
         </div>
-      </div>
-    </main>
+      </main>
+    </div>
   )
 }

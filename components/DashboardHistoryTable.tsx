@@ -1,8 +1,10 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useMemo } from 'react'
 import Link from 'next/link'
 import { useToast } from '@/components/ToastProvider'
+import { CyberTrashIcon, CyberLinkIcon, CyberFileIcon } from '@/components/icons/CyberIcons'
+import { AccessibleRiskBadge } from '@/components/AccessibleRiskBadge'
 
 export interface ScanRow {
   id: string
@@ -16,44 +18,81 @@ export interface ScanRow {
     ml?: number | null
     safeBrowsing?: boolean | null
     virusTotal?: boolean | null
+    vtVendors?: number | null
   }
   created_at: string
 }
 
-const RISK_BADGE: Record<
-  string,
-  { label: string; text: string; bg: string; border: string; dot: string }
-> = {
-  SAFE: {
-    label: 'Safe',
-    text: 'text-emerald-400',
-    bg: 'bg-emerald-500/10',
-    border: 'border-emerald-500/20',
-    dot: 'bg-emerald-400',
+type FilterTab = 'ALL' | 'URL' | 'FILE' | 'EMAIL'
+
+const MOCK_ROWS: ScanRow[] = [
+  {
+    id: 'mock-1',
+    scan_type: 'url',
+    input: 'hxxps://bit.ly/3x8f',
+    risk_level: 'SUSPICIOUS',
+    risk_score: 65,
+    reasons: ['Suspicious URL redirect'],
+    created_at: new Date(Date.now() - 60 * 1000).toISOString(),
   },
-  SUSPICIOUS: {
-    label: 'Suspicious',
-    text: 'text-amber-400',
-    bg: 'bg-amber-500/10',
-    border: 'border-amber-500/20',
-    dot: 'bg-amber-400',
+  {
+    id: 'mock-2',
+    scan_type: 'email',
+    input: 'malicious.eml',
+    risk_level: 'HIGH_RISK',
+    risk_score: 95,
+    reasons: ['Malware attachment detected'],
+    created_at: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
   },
-  HIGH_RISK: {
-    label: 'High Risk',
-    text: 'text-red-400',
-    bg: 'bg-red-500/10',
-    border: 'border-red-500/20',
-    dot: 'bg-red-400 animate-pulse',
+  {
+    id: 'mock-3',
+    scan_type: 'url',
+    input: 'bank-login.com',
+    risk_level: 'HIGH_RISK',
+    risk_score: 90,
+    reasons: ['Brand impersonation / phishing portal'],
+    created_at: new Date(Date.now() - 15 * 60 * 1000).toISOString(),
   },
-}
+  {
+    id: 'mock-4',
+    scan_type: 'email',
+    input: 'report.doc',
+    risk_level: 'SAFE',
+    risk_score: 0,
+    reasons: ['Clean document'],
+    created_at: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
+  },
+]
 
 export function DashboardHistoryTable({ initialScans }: { initialScans: ScanRow[] }) {
   const toast = useToast()
   const [scans, setScans] = useState<ScanRow[]>(initialScans)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [clearingAll, setClearingAll] = useState(false)
+  const [activeTab, setActiveTab] = useState<FilterTab>('ALL')
+
+  React.useEffect(() => {
+    setScans(initialScans)
+  }, [initialScans])
+
+  // If user has no scans yet, use the mockup display rows for a pristine day-1 look
+  const displayScans = scans.length > 0 ? scans : MOCK_ROWS
+  const isMock = scans.length === 0
+
+  const filteredScans = useMemo(() => {
+    return displayScans.filter((scan) => {
+      if (activeTab === 'URL' && scan.scan_type !== 'url') return false
+      if (activeTab === 'FILE' && scan.scan_type !== 'email') return false
+      if (activeTab === 'EMAIL' && scan.scan_type !== 'email') return false
+      return true
+    })
+  }, [displayScans, activeTab])
 
   async function handleDeleteScan(id: string) {
+    if (isMock) {
+      toast.info('Notice', 'Sample telemetry rows cannot be deleted.')
+      return
+    }
     setDeletingId(id)
     try {
       const res = await fetch(`/api/history?id=${id}`, { method: 'DELETE' })
@@ -63,7 +102,7 @@ export function DashboardHistoryTable({ initialScans }: { initialScans: ScanRow[
         toast.error('Deletion Failed', data.error ?? 'Could not delete scan record.')
       } else {
         setScans((prev) => prev.filter((s) => s.id !== id))
-        toast.success('Record Removed', 'Scan record has been deleted from your personal history.')
+        toast.success('Record Removed', 'Scan record deleted.')
       }
     } catch {
       toast.error('Network Error', 'Failed to connect to server.')
@@ -73,6 +112,11 @@ export function DashboardHistoryTable({ initialScans }: { initialScans: ScanRow[
   }
 
   async function handleClearAll() {
+    if (isMock) {
+      toast.info('Notice', 'Sample telemetry rows cannot be cleared.')
+      return
+    }
+
     if (!confirm('Are you sure you want to delete your entire scan history? This action cannot be undone.')) {
       return
     }
@@ -95,142 +139,250 @@ export function DashboardHistoryTable({ initialScans }: { initialScans: ScanRow[
     }
   }
 
-  return (
-    <div className="bg-slate-900/40 border border-white/10 rounded-2xl p-6 backdrop-blur-xl">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-        <div>
-          <h2 className="text-base font-bold text-white tracking-tight flex items-center gap-2">
-            <span>Recent Scan Logs</span>
-            <span className="text-xs font-normal text-slate-400 font-mono">({scans.length})</span>
-          </h2>
-          <p className="text-xs text-slate-400 mt-0.5">
-            Your telemetry and threat investigation record
-          </p>
-        </div>
+  function formatRelativeTime(isoDate: string): string {
+    const diffMs = Date.now() - new Date(isoDate).getTime()
+    const diffMin = Math.max(1, Math.round(diffMs / 60000))
+    if (diffMin < 60) return `${diffMin}m ago`
+    const diffH = Math.round(diffMin / 60)
+    if (diffH < 24) return `${diffH}h ago`
+    return `${Math.round(diffH / 24)}d ago`
+  }
 
+  return (
+    <div className="relative rounded-3xl bg-slate-900/60 border border-cyan-500/25 p-6 backdrop-blur-2xl shadow-[0_0_50px_-15px_rgba(6,182,212,0.15)] flex flex-col h-full overflow-hidden">
+      {/* Top subtle cyan energy highlight */}
+      <div className="absolute top-0 left-1/4 right-1/4 h-[2px] bg-gradient-to-r from-transparent via-cyan-400 to-transparent" />
+
+      {/* Header matching Mockup */}
+      <div className="flex items-center justify-between gap-4 mb-4">
+        <h2 className="text-xl font-bold text-white tracking-tight font-sans">
+          Scan History
+        </h2>
+
+        {/* Filter Pills & Clear All */}
         <div className="flex items-center gap-2">
+          <div className="inline-flex p-1 rounded-full bg-slate-950/80 border border-white/10 text-xs">
+            {(['ALL', 'URL', 'FILE', 'EMAIL'] as FilterTab[]).map((tab) => (
+              <button
+                key={tab}
+                type="button"
+                onClick={() => setActiveTab(tab)}
+                className={`px-3 py-1 rounded-full text-xs font-semibold transition-all cursor-pointer ${
+                  activeTab === tab
+                    ? 'bg-slate-800 text-white shadow-sm'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                {tab === 'ALL' ? 'All' : tab === 'URL' ? 'URLs' : tab === 'FILE' ? 'Files' : 'Emails'}
+              </button>
+            ))}
+          </div>
+
           {scans.length > 0 && (
             <button
+              type="button"
               onClick={handleClearAll}
               disabled={clearingAll}
-              className="px-3 py-1.5 rounded-lg border border-red-500/20 bg-red-500/10 hover:bg-red-500/20 text-red-300 text-xs font-medium transition flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
+              className="px-2.5 py-1 rounded-full border border-rose-500/20 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 text-xs font-medium transition flex items-center gap-1 cursor-pointer disabled:opacity-50"
+              title="Clear all scan history"
             >
-              {clearingAll ? (
-                <span>Clearing…</span>
-              ) : (
-                <>
-                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                  </svg>
-                  <span>Clear All History</span>
-                </>
-              )}
+              <CyberTrashIcon size={13} glow />
+              <span>Clear All</span>
             </button>
           )}
-
-          <Link
-            href="/scan/url"
-            className="text-xs font-mono text-cyan-400 hover:text-cyan-300 transition-colors flex items-center gap-1 ml-2"
-          >
-            <span>+ New Scan</span>
-          </Link>
         </div>
       </div>
 
-      {scans.length === 0 ? (
-        <div className="text-center py-12 border border-dashed border-white/10 rounded-xl">
-          <span className="text-2xl block mb-2 opacity-50">🛡️</span>
-          <p className="text-sm text-slate-300 font-medium">No scan history recorded</p>
-          <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
-            Scan a link or email above to begin monitoring potential phishing attacks in real time.
-          </p>
-        </div>
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead>
-              <tr className="border-b border-white/10 text-slate-400 uppercase font-mono text-[10px]">
-                <th className="pb-3 pr-4">Type</th>
-                <th className="pb-3 pr-4">Target / Content</th>
-                <th className="pb-3 pr-4">Verdict</th>
-                <th className="pb-3 pr-4">Score</th>
-                <th className="pb-3 pr-4">Signals</th>
-                <th className="pb-3 pr-4">Timestamp</th>
-                <th className="pb-3 text-right">Action</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-white/5 font-mono">
-              {scans.map((scan) => {
-                const badge = RISK_BADGE[scan.risk_level] ?? RISK_BADGE.SAFE
-                const isDeleting = deletingId === scan.id
+      {/* ── Desktop table (md+) ──────────────────────────────────────────────── */}
+      <div className="hidden md:block overflow-x-auto">
+        <table className="w-full text-left text-xs">
+          <thead>
+            <tr className="border-b border-white/10 text-slate-400 font-sans text-xs">
+              <th className="pb-3 pr-4 font-normal">Type</th>
+              <th className="pb-3 pr-4 font-normal">Target</th>
+              <th className="pb-3 pr-4 font-normal">Verdict</th>
+              <th className="pb-3 pr-4 font-normal">Detection</th>
+              <th className="pb-3 pr-4 font-normal">Time</th>
+              <th className="pb-3 text-right font-normal">Action</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-white/5 font-sans">
+            {filteredScans.map((scan) => {
+              const isDeleting = deletingId === scan.id
+              const isHigh = scan.risk_level === 'HIGH_RISK'
+              const isSuspicious = scan.risk_level === 'SUSPICIOUS'
 
-                return (
-                  <tr
-                    key={scan.id}
-                    className={`hover:bg-white/[0.02] transition-colors ${
-                      isDeleting ? 'opacity-40 pointer-events-none' : ''
-                    }`}
-                  >
-                    <td className="py-3.5 pr-4">
-                      <span className="px-2 py-0.5 rounded uppercase text-[10px] font-bold bg-white/5 border border-white/10 text-slate-300">
-                        {scan.scan_type}
-                      </span>
-                    </td>
-                    <td className="py-3.5 pr-4 max-w-xs truncate text-slate-200 font-sans">
-                      {scan.input}
-                    </td>
-                    <td className="py-3.5 pr-4">
-                      <span
-                        className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold border ${badge.bg} ${badge.border} ${badge.text}`}
-                      >
-                        <span className={`w-1.5 h-1.5 rounded-full ${badge.dot}`} />
-                        {badge.label}
-                      </span>
-                    </td>
-                    <td className="py-3.5 pr-4 text-white font-bold">{scan.risk_score}</td>
-                    <td className="py-3.5 pr-4">
-                      <div className="flex items-center gap-1 text-[10px]">
-                        <span
-                          className="px-1.5 py-0.5 rounded bg-white/5 border border-white/10 text-slate-400"
-                          title="Rule Engine"
-                        >
-                          R:{scan.signals?.rules ?? 0}
-                        </span>
-                        {scan.signals?.ml !== null && scan.signals?.ml !== undefined && (
-                          <span
-                            className="px-1.5 py-0.5 rounded bg-cyan-500/10 border border-cyan-500/20 text-cyan-300"
-                            title="ML Model"
-                          >
-                            ML:{scan.signals.ml}
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="py-3.5 pr-4 text-slate-400 text-[11px] font-sans whitespace-nowrap">
-                      {new Date(scan.created_at).toLocaleString([], {
-                        dateStyle: 'short',
-                        timeStyle: 'short',
-                      })}
-                    </td>
-                    <td className="py-3.5 text-right whitespace-nowrap">
-                      <button
-                        onClick={() => handleDeleteScan(scan.id)}
-                        disabled={isDeleting}
-                        title="Delete scan record"
-                        className="p-1.5 text-slate-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition cursor-pointer"
-                      >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              const typeBadge = scan.scan_type === 'url' ? 'URL' : 'File'
+              const detectionLabel = isHigh
+                ? scan.scan_type === 'url'
+                  ? 'Blocked - Phishing'
+                  : 'Quarantined'
+                : isSuspicious
+                ? 'Blocked'
+                : 'Safe'
+
+              return (
+                <tr
+                  key={scan.id}
+                  className={`hover:bg-white/[0.02] transition-colors ${
+                    isDeleting ? 'opacity-40 pointer-events-none' : ''
+                  }`}
+                >
+                  {/* Type Column */}
+                  <td className="py-3.5 pr-4">
+                    <span className="text-cyan-400 font-medium flex items-center gap-1.5">
+                      {scan.scan_type === 'url' ? (
+                        <CyberLinkIcon size={13} />
+                      ) : (
+                        <CyberFileIcon size={13} />
+                      )}
+                      <span>{typeBadge}</span>
+                    </span>
+                  </td>
+
+                  {/* Target Column */}
+                  <td className="py-3.5 pr-4 max-w-[180px] sm:max-w-xs truncate text-slate-200 font-mono text-xs">
+                    {scan.input}
+                  </td>
+
+                  {/* Verdict Column */}
+                  <td className="py-3.5 pr-4">
+                    <AccessibleRiskBadge
+                      level={scan.risk_level}
+                      score={scan.risk_score}
+                      size="sm"
+                      showScore
+                    />
+                  </td>
+
+                  {/* Detection Column */}
+                  <td className="py-3.5 pr-4">
+                    <span
+                      className={`font-medium ${
+                        isHigh
+                          ? 'text-rose-400'
+                          : isSuspicious
+                          ? 'text-amber-400'
+                          : 'text-emerald-400'
+                      }`}
+                    >
+                      {detectionLabel}
+                    </span>
+                  </td>
+
+                  {/* Time Column */}
+                  <td className="py-3.5 pr-4 text-slate-400 text-xs whitespace-nowrap">
+                    {formatRelativeTime(scan.created_at)}
+                  </td>
+
+                  {/* Action Column */}
+                  <td className="py-3.5 text-right whitespace-nowrap">
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteScan(scan.id)}
+                      disabled={isDeleting}
+                      title="Delete scan record"
+                      className="p-1.5 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer disabled:opacity-40"
+                    >
+                      {isDeleting ? (
+                        <svg className="w-3.5 h-3.5 animate-spin text-rose-400" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
                         </svg>
-                      </button>
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
+                      ) : (
+                        <CyberTrashIcon size={15} glow />
+                      )}
+                    </button>
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {/* ── Mobile stacked cards (< md) ──────────────────────────────────────── */}
+      <div className="block md:hidden space-y-2.5" role="list" aria-label="Personal scan history">
+        {filteredScans.map((scan) => {
+          const isDeleting = deletingId === scan.id
+          const isHigh = scan.risk_level === 'HIGH_RISK'
+          const isSuspicious = scan.risk_level === 'SUSPICIOUS'
+
+          const typeBadge = scan.scan_type === 'url' ? 'URL' : 'File'
+          const detectionLabel = isHigh
+            ? scan.scan_type === 'url'
+              ? 'Blocked - Phishing'
+              : 'Quarantined'
+            : isSuspicious
+            ? 'Blocked'
+            : 'Safe'
+
+          return (
+            <div
+              key={scan.id}
+              role="listitem"
+              className={`p-3.5 rounded-2xl border transition-all ${
+                isHigh
+                  ? 'border-rose-500/30 bg-rose-500/5'
+                  : isSuspicious
+                  ? 'border-amber-500/25 bg-amber-500/5'
+                  : 'border-white/10 bg-slate-950/60'
+              } ${isDeleting ? 'opacity-40 pointer-events-none' : ''}`}
+            >
+              {/* Row 1: Type + Verdict + Delete */}
+              <div className="flex items-center justify-between gap-2 mb-2">
+                <div className="flex items-center gap-2">
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-900 border border-white/10 text-[11px] font-mono text-cyan-400">
+                    {scan.scan_type === 'url' ? <CyberLinkIcon size={11} /> : <CyberFileIcon size={11} />}
+                    <span>{typeBadge}</span>
+                  </span>
+                  <AccessibleRiskBadge
+                    level={scan.risk_level}
+                    score={scan.risk_score}
+                    size="sm"
+                    showScore
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleDeleteScan(scan.id)}
+                  disabled={isDeleting}
+                  title="Delete scan record"
+                  className="p-1 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer disabled:opacity-40"
+                >
+                  {isDeleting ? (
+                    <svg className="w-3.5 h-3.5 animate-spin text-rose-400" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                    </svg>
+                  ) : (
+                    <CyberTrashIcon size={14} glow />
+                  )}
+                </button>
+              </div>
+
+              {/* Row 2: Target payload */}
+              <p className="font-mono text-xs text-slate-200 break-all mb-2">
+                {scan.input}
+              </p>
+
+              {/* Row 3: Detection status + Time */}
+              <div className="flex items-center justify-between text-[11px] text-slate-400 pt-1 border-t border-white/5">
+                <span
+                  className={`font-medium ${
+                    isHigh ? 'text-rose-400' : isSuspicious ? 'text-amber-400' : 'text-emerald-400'
+                  }`}
+                >
+                  {detectionLabel}
+                </span>
+                <span className="font-mono text-slate-500">
+                  {formatRelativeTime(scan.created_at)}
+                </span>
+              </div>
+            </div>
+          )
+        })}
+      </div>
     </div>
   )
 }

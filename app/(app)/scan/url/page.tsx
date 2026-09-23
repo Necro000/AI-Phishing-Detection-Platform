@@ -7,6 +7,8 @@ import { Navbar } from '@/components/Navbar'
 import { RiskGauge } from '@/components/RiskGauge'
 import { useToast } from '@/components/ToastProvider'
 import { createBrowserClient } from '@/lib/supabaseClient'
+import { ScanResultSkeleton } from '@/components/ScanResultSkeleton'
+import { CyberLinkIcon } from '@/components/icons/CyberIcons'
 
 type RiskLevel = 'SAFE' | 'SUSPICIOUS' | 'HIGH_RISK'
 
@@ -139,8 +141,11 @@ export default function ScanUrlPage() {
               <span>/</span>
               <span className="text-cyan-400">URL Threat Inspector</span>
             </div>
-            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-white flex items-center gap-2.5">
-              <span>🔗 Multi-Signal URL Phishing Scanner</span>
+            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-white flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center">
+                <CyberLinkIcon size={20} glow />
+              </div>
+              <span>Multi-Signal URL Phishing Scanner</span>
             </h1>
             <p className="text-xs sm:text-sm text-slate-400 mt-1">
               Real-time deep inference combining Rule Engine heuristics, ML classifier, Safe Browsing, and VirusTotal.
@@ -260,7 +265,9 @@ export default function ScanUrlPage() {
 
           {/* Results Bento (Col 8-12) */}
           <div className="lg:col-span-5 space-y-6">
-            {result ? (
+            {loading ? (
+              <ScanResultSkeleton />
+            ) : result ? (
               <div className="bg-slate-900/60 border border-white/10 rounded-2xl p-6 backdrop-blur-xl shadow-2xl relative overflow-hidden animate-in fade-in zoom-in-95">
                 <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-cyan-500/50 to-transparent" />
 

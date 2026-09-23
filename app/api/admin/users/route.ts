@@ -32,16 +32,18 @@ export async function GET(request: NextRequest) {
 
     if (profilesError) throw profilesError
 
-    // Step 2: Get scan counts per user
-    const { data: scanCounts, error: scanError } = await supabase
-      .from('scans')
-      .select('user_id')
-
-    if (scanError) throw scanError
-
+    // Step 2: Get scan counts per user efficiently without loading all scan rows into memory
     const countByUser: Record<string, number> = {}
-    for (const { user_id } of (scanCounts ?? [])) {
-      countByUser[user_id] = (countByUser[user_id] ?? 0) + 1
+    if (profiles && profiles.length > 0) {
+      await Promise.all(
+        profiles.map(async (p) => {
+          const { count } = await supabase
+            .from('scans')
+            .select('*', { count: 'exact', head: true })
+            .eq('user_id', p.id)
+          countByUser[p.id] = count ?? 0
+        })
+      )
     }
 
     // Step 3: Get emails from Supabase Auth admin API

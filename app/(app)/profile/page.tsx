@@ -4,6 +4,7 @@ import { createServerClient } from '@supabase/ssr'
 import { createServiceClient } from '@/lib/supabaseServiceClient'
 import { Navbar } from '@/components/Navbar'
 import { ProfileSecurityForm } from './ProfileSecurityForm'
+import { CyberShieldIcon } from '@/components/icons/CyberIcons'
 import Link from 'next/link'
 
 export const metadata = {
@@ -74,8 +75,9 @@ export default async function ProfilePage() {
       <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
         {/* Page Header */}
         <div className="mb-8">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 text-xs font-mono text-blue-300 mb-2">
-            <span>🛡️ Identity & Access Management</span>
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/20 text-xs font-mono text-cyan-300 mb-2">
+            <CyberShieldIcon size={14} glow />
+            <span>Identity & Access Management</span>
           </div>
           <h1 className="text-3xl font-bold tracking-tight text-white">Security Center & Profile</h1>
           <p className="text-sm text-slate-400 mt-1">
@@ -120,7 +122,7 @@ export default async function ProfilePage() {
 
                 <div>
                   <span className="text-slate-400 block text-[10px] uppercase">Registered Since</span>
-                  <span className="text-slate-300">
+                  <span suppressHydrationWarning className="text-slate-300">
                     {accountCreatedAt ? new Date(accountCreatedAt).toLocaleDateString() : 'N/A'}
                   </span>
                 </div>

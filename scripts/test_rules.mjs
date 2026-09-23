@@ -12,8 +12,12 @@ const PRIVATE_IP_PATTERNS = [
   /^172\.(1[6-9]|2\d|3[01])\.\d+\.\d+$/,
   /^192\.168\.\d+\.\d+$/,
   /^127\.\d+\.\d+\.\d+$/,
+  /^169\.254\.\d+\.\d+$/, // AWS / Azure / GCP link-local metadata
   /^::1$/,
+  /^::ffff:127\.\d+\.\d+\.\d+$/, // IPv4-mapped loopback
+  /^::ffff:169\.254\.\d+\.\d+$/, // IPv4-mapped metadata
   /^localhost$/i,
+  /^metadata\.google\.internal$/i,
   /^0\.0\.0\.0$/,
 ]
 
@@ -50,12 +54,14 @@ function assert(desc, condition) {
 console.log('\n=== URL Rule Engine + Scoring Tests ===\n')
 
 // ── SSRF guard ────────────────────────────────────────────────────────────────
-assert('Private IP 192.168.1.1 detected as private',   isPrivateOrLoopback('192.168.1.1'))
-assert('Private IP 10.0.0.1 detected as private',      isPrivateOrLoopback('10.0.0.1'))
-assert('Loopback 127.0.0.1 detected as private',       isPrivateOrLoopback('127.0.0.1'))
-assert('localhost detected as private',                 isPrivateOrLoopback('localhost'))
-assert('google.com NOT private',                       !isPrivateOrLoopback('google.com'))
-assert('evil.com NOT private',                         !isPrivateOrLoopback('evil.com'))
+assert('Private IP 192.168.1.1 detected as private',           isPrivateOrLoopback('192.168.1.1'))
+assert('Private IP 10.0.0.1 detected as private',              isPrivateOrLoopback('10.0.0.1'))
+assert('Loopback 127.0.0.1 detected as private',               isPrivateOrLoopback('127.0.0.1'))
+assert('localhost detected as private',                         isPrivateOrLoopback('localhost'))
+assert('Cloud metadata 169.254.169.254 detected as private',    isPrivateOrLoopback('169.254.169.254'))
+assert('Google metadata.google.internal detected as private',  isPrivateOrLoopback('metadata.google.internal'))
+assert('google.com NOT private',                               !isPrivateOrLoopback('google.com'))
+assert('evil.com NOT private',                                 !isPrivateOrLoopback('evil.com'))
 
 // ── URL normalization ─────────────────────────────────────────────────────────
 assert('No-scheme URL gets https://',       normalizeUrl('google.com') === 'https://google.com')

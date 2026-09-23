@@ -28,7 +28,8 @@ export interface VirusTotalResult {
 const VT_ENDPOINT = 'https://www.virustotal.com/api/v3/urls'
 const TIMEOUT_MS = 5000
 const MALICIOUS_THRESHOLD = 3
-const CACHE_TTL_MS = 24 * 60 * 60 * 1000  // 24 hours in ms
+const CACHE_TTL_MS = 24 * 60 * 60 * 1000        // 24 hours for indexed reports
+const UNSEEN_CACHE_TTL_MS = 15 * 60 * 1000       // 15 minutes for 404/unseen targets to prevent zero-day blindness
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -74,13 +75,16 @@ async function readCache(urlHash: string): Promise<CachedVerdict | null> {
 
     if (error || !data) return null
 
+    const verdict = data.virustotal_result as CachedVerdict
+    const ttl = verdict?.unseen ? UNSEEN_CACHE_TTL_MS : CACHE_TTL_MS
+
     // TTL check — treat stale as cache miss (Architecture.md §3)
     const fetchedAt = new Date(data.fetched_at as string).getTime()
-    if (Date.now() - fetchedAt > CACHE_TTL_MS) {
+    if (Date.now() - fetchedAt > ttl) {
       return null  // stale — caller will overwrite on next fetch
     }
 
-    return data.virustotal_result as CachedVerdict
+    return verdict
   } catch {
     return null  // cache read failure is non-fatal — fall through to API call
   }

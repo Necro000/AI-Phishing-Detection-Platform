@@ -40,8 +40,16 @@ export const DEFAULT_KEYWORDS: DbKeyword[] = [
   { keyword: 'invoice overdue', weight: 25, category: 'financial_threat' },
   { keyword: 'crypto wallet', weight: 25, category: 'financial_threat' },
 
-  // Account action
+  // Account action & Expiration
   { keyword: 'billing failure', weight: 30, category: 'account_action' },
   { keyword: 'update payment method', weight: 30, category: 'account_action' },
   { keyword: 'tax refund pending', weight: 35, category: 'account_action' },
+  { keyword: 'action required', weight: 25, category: 'urgency' },
+  { keyword: 'password expires', weight: 35, category: 'credential_request' },
+  { keyword: 'password will expire', weight: 35, category: 'credential_request' },
+  { keyword: 're-change your password', weight: 35, category: 'credential_request' },
+  { keyword: 'keep same password', weight: 35, category: 'credential_request' },
+  { keyword: 'it help desk', weight: 25, category: 'impersonation' },
+  { keyword: 'losing access', weight: 25, category: 'urgency' },
+  { keyword: 'click the link below', weight: 20, category: 'call_to_action' },
 ]

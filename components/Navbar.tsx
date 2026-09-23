@@ -3,7 +3,17 @@
 import React, { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
+
 import { createBrowserClient } from '@/lib/supabaseClient'
+
+import {
+  CyberShieldIcon,
+  CyberSettingsIcon,
+  CyberUserIcon,
+  CyberLinkIcon,
+  CyberFileIcon,
+  CyberLogoutIcon,
+} from '@/components/icons/CyberIcons'
 
 interface NavbarProps {
   userEmail?: string
@@ -14,6 +24,7 @@ export function Navbar({ userEmail, role = 'user' }: NavbarProps) {
   const pathname = usePathname()
   const router = useRouter()
   const [dropdownOpen, setDropdownOpen] = useState(false)
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
 
   // Close dropdown on click outside
@@ -26,6 +37,12 @@ export function Navbar({ userEmail, role = 'user' }: NavbarProps) {
     document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
+
+  const [prevPathname, setPrevPathname] = useState(pathname)
+  if (prevPathname !== pathname) {
+    setPrevPathname(pathname)
+    setMobileMenuOpen(false)
+  }
 
   async function handleSignOut() {
     try {
@@ -60,11 +77,11 @@ export function Navbar({ userEmail, role = 'user' }: NavbarProps) {
         {/* Brand */}
         <div className="flex items-center gap-6">
           <Link href="/dashboard" className="flex items-center gap-2.5 group">
-            <div className="w-9 h-9 rounded-xl bg-blue-600/20 border border-blue-500/40 flex items-center justify-center text-lg group-hover:scale-105 group-hover:border-blue-400 transition-all shadow-md shadow-blue-500/10">
-              🛡️
+            <div className="w-9 h-9 rounded-xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center group-hover:scale-105 group-hover:border-cyan-400 transition-all shadow-md shadow-cyan-500/10">
+              <CyberShieldIcon size={20} glow />
             </div>
             <div className="flex flex-col">
-              <span className="text-sm font-bold text-white tracking-tight leading-none group-hover:text-blue-400 transition-colors">
+              <span className="text-sm font-bold text-white tracking-tight leading-none group-hover:text-cyan-400 transition-colors">
                 AI Defense
               </span>
               <span className="text-[10px] font-mono text-cyan-400/80 leading-tight">
@@ -98,7 +115,7 @@ export function Navbar({ userEmail, role = 'user' }: NavbarProps) {
                     : 'text-purple-400 hover:text-purple-300 hover:bg-purple-500/10'
                 }`}
               >
-                <span>⚙️</span>
+                <CyberSettingsIcon size={14} />
                 <span>Admin Console</span>
               </Link>
             )}
@@ -112,6 +129,7 @@ export function Navbar({ userEmail, role = 'user' }: NavbarProps) {
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
             <span>ML & Heuristics Active</span>
           </div>
+
 
           {/* User Profile Avatar Dropdown */}
           <div className="relative" ref={dropdownRef}>
@@ -156,7 +174,7 @@ export function Navbar({ userEmail, role = 'user' }: NavbarProps) {
                   onClick={() => setDropdownOpen(false)}
                   className="flex items-center gap-2.5 px-4 py-2.5 text-slate-300 hover:text-white hover:bg-white/10 transition-colors"
                 >
-                  <span>👤</span>
+                  <CyberUserIcon size={16} />
                   <span>Security & Profile</span>
                 </Link>
 
@@ -165,7 +183,7 @@ export function Navbar({ userEmail, role = 'user' }: NavbarProps) {
                   onClick={() => setDropdownOpen(false)}
                   className="flex items-center gap-2.5 px-4 py-2.5 text-slate-300 hover:text-white hover:bg-white/10 transition-colors"
                 >
-                  <span>🔗</span>
+                  <CyberLinkIcon size={16} />
                   <span>Scan URL</span>
                 </Link>
 
@@ -174,7 +192,7 @@ export function Navbar({ userEmail, role = 'user' }: NavbarProps) {
                   onClick={() => setDropdownOpen(false)}
                   className="flex items-center gap-2.5 px-4 py-2.5 text-slate-300 hover:text-white hover:bg-white/10 transition-colors"
                 >
-                  <span>📧</span>
+                  <CyberFileIcon size={16} />
                   <span>Scan Email File</span>
                 </Link>
 
@@ -184,7 +202,7 @@ export function Navbar({ userEmail, role = 'user' }: NavbarProps) {
                     onClick={() => setDropdownOpen(false)}
                     className="flex items-center gap-2.5 px-4 py-2.5 text-purple-300 hover:text-purple-200 hover:bg-purple-500/10 transition-colors"
                   >
-                    <span>🛡️</span>
+                    <CyberShieldIcon size={16} />
                     <span>Admin Audit Panel</span>
                   </Link>
                 )}
@@ -195,15 +213,101 @@ export function Navbar({ userEmail, role = 'user' }: NavbarProps) {
                     onClick={handleSignOut}
                     className="w-full text-left flex items-center gap-2.5 px-4 py-2 text-rose-400 hover:bg-rose-500/10 hover:text-rose-300 transition-colors cursor-pointer"
                   >
-                    <span>🚪</span>
+                    <CyberLogoutIcon size={16} />
                     <span>Sign Out</span>
                   </button>
                 </div>
               </div>
             )}
           </div>
+
+          {/* Mobile Hamburger Button */}
+          <button
+            type="button"
+            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            aria-expanded={mobileMenuOpen}
+            aria-label="Toggle Navigation Menu"
+            className="md:hidden p-2 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white transition-all focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            {mobileMenuOpen ? (
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            ) : (
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+            )}
+          </button>
         </div>
       </div>
+
+      {/* Mobile Navigation Drawer */}
+      {mobileMenuOpen && (
+        <div className="md:hidden border-t border-white/10 bg-slate-950/95 backdrop-blur-2xl px-4 py-4 space-y-1.5 animate-in slide-in-from-top-2 duration-200">
+          <div className="pb-2 mb-2 border-b border-white/10 flex items-center justify-between">
+            <span className="text-[11px] font-mono text-slate-400 uppercase tracking-wider">Navigation</span>
+            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-[10px] font-mono text-emerald-300">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              <span>Engines Online</span>
+            </div>
+          </div>
+
+          {navLinks.map((link) => (
+            <Link
+              key={link.href}
+              href={link.href}
+              onClick={() => setMobileMenuOpen(false)}
+              className={`flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
+                link.active
+                  ? 'bg-blue-600/20 text-blue-300 border border-blue-500/30'
+                  : 'text-slate-300 hover:text-white hover:bg-white/5'
+              }`}
+            >
+              <span>{link.label}</span>
+              {link.active && <span className="text-xs text-blue-400 font-mono">Active</span>}
+            </Link>
+          ))}
+
+          {isAdmin && (
+            <Link
+              href="/admin/scans"
+              onClick={() => setMobileMenuOpen(false)}
+              className={`flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
+                pathname.startsWith('/admin')
+                  ? 'bg-purple-600/20 text-purple-300 border border-purple-500/30'
+                  : 'text-purple-400 hover:text-purple-300 hover:bg-purple-500/10'
+              }`}
+            >
+              <span>⚙️</span>
+              <span>Admin SOC Console</span>
+            </Link>
+          )}
+
+          <div className="pt-3 mt-3 border-t border-white/10 flex flex-col gap-1">
+            <Link
+              href="/profile"
+              onClick={() => setMobileMenuOpen(false)}
+              className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm text-slate-300 hover:text-white hover:bg-white/5 transition-colors"
+            >
+              <span>👤</span>
+              <span>Profile & Security</span>
+            </Link>
+            <button
+              type="button"
+              onClick={() => {
+                setMobileMenuOpen(false)
+                handleSignOut()
+              }}
+              className="w-full text-left flex items-center gap-2 px-3 py-2 rounded-xl text-sm text-rose-400 hover:bg-rose-500/10 hover:text-rose-300 transition-colors cursor-pointer"
+            >
+              <span>🚪</span>
+              <span>Sign Out</span>
+            </button>
+          </div>
+        </div>
+      )}
     </header>
   )
 }
+
